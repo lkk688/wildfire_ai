@@ -79,8 +79,8 @@ export default function Sidebar({
               <Flame className="w-6 h-6 animate-pulse" />
             </div>
             <div>
-              <h1 className="font-bold text-lg text-slate-100 tracking-wide">Wildfire AI Pilot</h1>
-              <p className="text-xs text-orange-400 font-medium">San Bruno FD × SJSU × Google X</p>
+              <h1 className="font-bold text-lg text-slate-100 tracking-wide">Wildfire AI Platform</h1>
+              <p className="text-xs text-orange-400 font-medium">Risk Intelligence & Decision Support</p>
             </div>
           </div>
         </div>

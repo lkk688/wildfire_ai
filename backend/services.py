@@ -354,7 +354,7 @@ class GISDataService:
         """
         Provide structured Off-the-Shelf Model Evaluation and Gap Analysis data
         comparing Google X Bellwether, CAL FIRE FHSZ, and Commercial Insurance Cat Models.
-        Grounded in the San Bruno Fire Department x SJSU x Google X Scoping Framework.
+        Emphasizes actionable user benefits for residents, firefighters, and municipal planners.
         """
         region_titles = {
             "san_bruno": "San Bruno WUI & San Francisco Watershed Corridor",
@@ -366,15 +366,32 @@ class GISDataService:
         return {
             "region": region,
             "region_name": region_name,
-            "milestone": "Milestone 1: Off-the-Shelf Model Evaluation & Gap Analysis",
+            "milestone": "Milestone 1: Model Evaluation, Gap Analysis & Frontier AI",
             "executive_summary": (
-                "This evaluation framework cross-references Google X Project Bellwether's machine learning "
-                "landscape hazard models against CAL FIRE's statutory Fire Hazard Severity Zones (FHSZ) and "
-                "commercial insurance actuarial models (e.g., Verisk FireLine, Zesty.ai). It pinpoints critical "
-                "discrepancies between static regulatory zoning and forward-looking AI probabilities, explaining "
-                "why homeowners face unexpected insurance non-renewals and how fire departments can prioritize mitigation."
+                "This platform cross-references predictive machine learning models (Google X Bellwether 100m) "
+                "against statutory regulatory zoning (CAL FIRE FHSZ) and commercial insurance actuarial models (Verisk / Zesty.ai). "
+                "By pinpointing critical discrepancies between static regulatory maps and dynamic AI probabilities, the platform "
+                "empowers homeowners to challenge unjustified insurance cancellations and equips fire departments with real-time "
+                "tactical situational awareness."
             ),
+            "user_value_proposition": {
+                "for_residents": (
+                    "Gain transparent, parcel-level visibility into your home's true wildfire risk. Understand why insurance companies "
+                    "hike premiums or drop policies, access guided home hardening steps (Class A roof, 1/16\" vents, 0-5ft defensible space), "
+                    "and unlock mandatory insurance discounts under California Department of Insurance (CDI) regulations."
+                ),
+                "for_firefighters": (
+                    "Equip incident commanders and fire marshals with high-resolution 100m forward-looking hazard probabilities, "
+                    "live NOAA HRRR wind plumes, CDEC/RAWS fuel moisture telemetry, and 130ft radiant heat contagion scoping to project "
+                    "structure-to-structure fire spread and calculate saved property value ROI ('Quantification of the Negative')."
+                ),
+                "ui_experience": (
+                    "A clean, responsive, dark-mode GIS interface featuring instant multi-source layer toggles, click-to-calculate "
+                    "wind-adjusted radiant heat corridors, clear side-by-side comparison matrices, and an integrated AI Copilot."
+                )
+            },
             "models": [
+
                 {
                     "id": "bellwether",
                     "name": "Google X Project Bellwether",
@@ -609,6 +626,104 @@ class GISDataService:
                     "insurance_score": "38/100 (Eligible for 18% CDI Discount)",
                     "diagnosis": "Resilience breakthrough: Despite high landscape hazard, structural hardening and 0-5ft defensible space significantly suppress ignition probability."
                 }
-            ]
+            ],
+            "academic_and_frontier_models": {
+                "title": "Academic Open-Source SOTA & Frontier AI Wildfire Models",
+                "description": (
+                    "Beyond commercial off-the-shelf products, academic research and open-source benchmarks "
+                    "have introduced physics-guided deep learning and neural operators for wildfire modeling."
+                ),
+                "open_source_models": [
+                    {
+                        "name": "Physics-Informed Neural Networks (PINNs / B-PINNs)",
+                        "paradigm": "Physics-Guided PDE Solvers (Level-Set & Eikonal)",
+                        "open_access": "Open Source (GitHub / arXiv)",
+                        "highlights": "Embeds Rothermel rate of spread (ROS) and energy conservation directly into the neural loss function, preventing non-physical firefront jumps."
+                    },
+                    {
+                        "name": "Fourier Neural Operators (FNO & DeepONet)",
+                        "paradigm": "Infinite-Dimensional Operator Learning",
+                        "open_access": "Open Weights & Code",
+                        "highlights": "Learns mapping from terrain/weather fields to fire arrival time; zero-shot super-resolution upscaling (100m to 10m), 1,000x faster than FARSITE."
+                    },
+                    {
+                        "name": "Spatio-Temporal Graph Neural Networks (ST-GNNs)",
+                        "paradigm": "Non-Euclidean Dynamic Message Passing",
+                        "open_access": "PyG / DGL Repositories",
+                        "highlights": "Models ridges, canyons, and road firebreaks as graph nodes, capturing non-local ember jumps and canyon chimney wind effects."
+                    },
+                    {
+                        "name": "Google Research - Next Day Wildfire Spread (NDWS)",
+                        "paradigm": "Multi-Modal ConvLSTM / U-Net Benchmark",
+                        "open_access": "Kaggle Benchmark & Code",
+                        "highlights": "Standardized 1km continental US benchmark predicting 24-hour fire front expansion from 12 environmental features."
+                    },
+                    {
+                        "name": "WildfireSpreadTS (WSTS & WSTS+)",
+                        "paradigm": "Spatio-Temporal Transformer Benchmark",
+                        "open_access": "NeurIPS Datasets Track",
+                        "highlights": "Time-series benchmark tracking continuous multi-day fire scars with multi-spectral satellite reflectance bands."
+                    },
+                    {
+                        "name": "FireSentry",
+                        "paradigm": "High-Fidelity Multi-Modal Drone Benchmark",
+                        "open_access": "ACM SIGKDD 2026",
+                        "highlights": "Integrates aerial thermal/RGB drone video with ground forestry telemetry for fine-grained localized fire behavior."
+                    },
+                    {
+                        "name": "WIFIRE Lab / BurnPro3D (UC San Diego)",
+                        "paradigm": "Coupled Fire-Atmosphere Cloud Simulation",
+                        "open_access": "Academic Platform / NSF Supported",
+                        "highlights": "Supercomputer-backed dynamic physical fire simulation tailored for prescribed burns and active wildfire dispatch."
+                    }
+                ],
+                "llm_prediction_requirements": {
+                    "overview": (
+                        "Large Language Models (LLMs) and Multimodal Foundation Models are not suited as raw numerical "
+                        "PDE solvers; rather, they serve as high-level **Agentic Reasoning Controllers and Spatial Copilots** "
+                        "that ingest multi-modal environmental streams, orchestrate specialized GIS tools, and generate "
+                        "calibrated tactical decisions."
+                    ),
+                    "required_data_inputs": [
+                        {
+                            "category": "1. Dynamic Meteorological Vectors",
+                            "variables": "10m wind speed, wind azimuth (direction), gust velocity, ambient temperature, relative humidity (RH), and Haines atmospheric stability index.",
+                            "frequency": "Hourly updates (NOAA HRRR / RTMA)"
+                        },
+                        {
+                            "category": "2. Fuel Moisture & Vegetation Classification",
+                            "variables": "1-hr, 10-hr, 100-hr Dead Fuel Moisture (DFM), Live Fuel Moisture Content (LFMC), and Scott & Burgan 40 standard fuel models (fuel load, surface-to-volume ratio).",
+                            "frequency": "Daily / Weekly (CDEC, RAWS, LANDFIRE)"
+                        },
+                        {
+                            "category": "3. High-Resolution Topography & Terrain",
+                            "variables": "Digital Elevation Model (DEM), slope steepness percentage (%), aspect orientation (solar desiccation angle), and canyon wind funnel geometry.",
+                            "frequency": "Static / Periodic (USGS 3DEP 10m LiDAR)"
+                        },
+                        {
+                            "category": "4. Active Thermal Hotspots & Perimeters",
+                            "variables": "Satellite thermal anomaly coordinates (NASA VIIRS/MODIS), Brightness Kelvin, Fire Radiative Power (MW), and active containment perimeters (NIFC/CAL FIRE).",
+                            "frequency": "Near real-time (every 1 - 3 hours)"
+                        },
+                        {
+                            "category": "5. Structural Vulnerability & Hardening Layer",
+                            "variables": "Building footprints (Microsoft / OSM), roof material class (Class A vs wood shake), 0-5ft Zone 0 defensible space clearance, and evacuation road bottlenecks.",
+                            "frequency": "Annual / UAV Drone Scans"
+                        },
+                        {
+                            "category": "6. Historical Fire Return & Treatment Boundaries",
+                            "variables": "Historical fire perimeter database (MTBS), recent prescribed burns, and mechanical fuel mastication break corridors.",
+                            "frequency": "Annual / Seasonal updates"
+                        }
+                    ],
+                    "agentic_reasoning_architecture": (
+                        "To perform reliable predictions, the LLM utilizes an **Agentic ReAct Tool-Calling Loop**: "
+                        "1) The user provides a location query; 2) The LLM calls spatial GIS tools to extract local wind, "
+                        "fuel moisture, and slope; 3) The LLM feeds these variables into empirical equations (Rothermel ROS, "
+                        "Stefan-Boltzmann radiant heat flux); 4) The LLM synthesizes a calibrated, defensible risk briefing."
+                    )
+                }
+            }
         }
+
 

@@ -7,20 +7,21 @@ San Mateo & San Jose multi-region support, and 130ft radiant heat corridor queri
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.services import GISDataService, STATIC_DIR
+from backend.ai import WildfireAIAgent
 
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
-    title="Wildfire Risk Mitigation Pilot API",
-    description="San Bruno Fire Department x SJSU WIRC x Google X Bellwether Project API",
-    version="1.4.0",
+    title="Wildfire Risk Intelligence & Mitigation Platform API",
+    description="AI-Powered Wildfire Risk Analytics, Decision Support, and Home Hardening Platform",
+    version="1.5.0",
 )
 
 app.add_middleware(
@@ -34,6 +35,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 gis_service = GISDataService()
+ai_agent = WildfireAIAgent(gis_service=gis_service)
 
 
 class QueryCorridorRequest(BaseModel):
@@ -42,13 +44,26 @@ class QueryCorridorRequest(BaseModel):
     radius_feet: float = 130.0
 
 
+class AIChatRequest(BaseModel):
+    messages: List[Dict[str, str]]
+    persona: str = "resident"  # "firefighter" or "resident"
+    context: Optional[Dict[str, Any]] = None
+
+
 @app.get("/")
 def root():
     return {
         "status": "online",
-        "project": "San Bruno Wildfire Risk Mitigation Pilot",
-        "partners": ["San Bruno Fire Department", "SJSU WIRC", "Google X Bellwether Project"],
+        "platform": "Wildfire Risk Intelligence & Mitigation Platform",
+        "capabilities": [
+            "Predictive AI Hazard Mapping (1-Year & 5-Year)",
+            "Multi-Source GIS Overlays (NASA FIRMS, CAL FIRE, RAWS, USGS 3DEP)",
+            "130ft Radiant Heat Contagion Scoping & Negative Value Quantification",
+            "Home Hardening & Insurance Discount Compliance (CDI / IBHS)",
+            "Intelligent Wildfire AI Copilot with MiniMax LLM & Real-Time Tool Calling"
+        ],
     }
+
 
 
 @app.get("/api/health")
@@ -196,6 +211,34 @@ def get_model_evaluation(
         return {"success": True, "data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ai/chat")
+def chat_with_ai(req: AIChatRequest):
+    """
+    Conversational AI Copilot powered by MiniMax API.
+    Supports dual personas ('firefighter' vs 'resident') and real-time GIS tool execution.
+    """
+    try:
+        res = ai_agent.chat(
+            messages=req.messages,
+            persona=req.persona,
+            context=req.context
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai/suggested-prompts")
+def get_suggested_prompts(persona: str = Query("resident", description="'resident' or 'firefighter'")):
+    """Get high-impact recommended prompt pills for the AI Copilot."""
+    try:
+        prompts = ai_agent.get_suggested_prompts(persona=persona)
+        return {"success": True, "prompts": prompts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 

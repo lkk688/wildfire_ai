@@ -19,6 +19,13 @@ import {
   FileText,
   TrendingDown,
   TrendingUp,
+  Cpu,
+  Database,
+  BrainCircuit,
+  Sparkles,
+  Compass,
+  Wind,
+  Mountain,
 } from 'lucide-react';
 
 interface ModelEvaluationModalProps {
@@ -34,7 +41,7 @@ export default function ModelEvaluationModal({
 }: ModelEvaluationModalProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'matrix' | 'cases' | 'simulator' | 'guidelines'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'matrix' | 'cases' | 'simulator' | 'guidelines' | 'academic_ai'>('overview');
   const [selectedScenarioIdx, setSelectedScenarioIdx] = useState<number>(0);
 
   useEffect(() => {
@@ -70,17 +77,17 @@ export default function ModelEvaluationModal({
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/20 text-orange-300 border border-orange-500/30">
-                  Tri-Party Pilot Milestone 1
+                  Risk Intelligence & Benchmark
                 </span>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
-                  Region: {data?.region_name || selectedRegion}
+                  Target: {data?.region_name || selectedRegion}
                 </span>
               </div>
               <h2 className="text-xl font-extrabold text-slate-100 tracking-wide mt-1">
                 Off-the-Shelf Model Evaluation & Gap Analysis
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Benchmarking Google X Bellwether ML against CAL FIRE Statutory FHSZ and Actuarial Insurance Risk Models
+                Demystifying Wildfire Predictions for Residents & Firefighters: Bellwether ML, CAL FIRE FHSZ, Insurance & Academic SOTA
               </p>
             </div>
           </div>
@@ -98,7 +105,7 @@ export default function ModelEvaluationModal({
         <div className="flex items-center gap-2 py-3 border-b border-slate-800/80 shrink-0 overflow-x-auto text-xs font-semibold">
           <button
             onClick={() => setActiveTab('overview')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'overview'
                 ? 'bg-orange-500 text-slate-950 font-bold shadow-md shadow-orange-500/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -110,31 +117,31 @@ export default function ModelEvaluationModal({
 
           <button
             onClick={() => setActiveTab('matrix')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'matrix'
                 ? 'bg-orange-500 text-slate-950 font-bold shadow-md shadow-orange-500/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
             <Scale className="w-3.5 h-3.5" />
-            2. Side-by-Side Comparison Matrix
+            2. Comparison Matrix
           </button>
 
           <button
             onClick={() => setActiveTab('cases')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'cases'
                 ? 'bg-orange-500 text-slate-950 font-bold shadow-md shadow-orange-500/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
             <AlertTriangle className="w-3.5 h-3.5" />
-            3. Discrepancy & Gap Case Studies
+            3. Discrepancy Case Studies
           </button>
 
           <button
             onClick={() => setActiveTab('simulator')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'simulator'
                 ? 'bg-orange-500 text-slate-950 font-bold shadow-md shadow-orange-500/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -145,15 +152,27 @@ export default function ModelEvaluationModal({
           </button>
 
           <button
+            onClick={() => setActiveTab('academic_ai')}
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'academic_ai'
+                ? 'bg-orange-500 text-slate-950 font-bold shadow-md shadow-orange-500/20'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <BrainCircuit className="w-3.5 h-3.5" />
+            5. Academic SOTA & Frontier AI Models
+          </button>
+
+          <button
             onClick={() => setActiveTab('guidelines')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'guidelines'
                 ? 'bg-orange-500 text-slate-950 font-bold shadow-md shadow-orange-500/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            5. Actionable Guidelines (Fire & Resident)
+            6. Actionable Guidelines
           </button>
         </div>
 
@@ -169,36 +188,73 @@ export default function ModelEvaluationModal({
               {/* TAB 1: OVERVIEW & CORE MODELS */}
               {activeTab === 'overview' && (
                 <div className="space-y-4">
-                  {/* Executive Rationale Banner */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-r from-orange-500/15 via-slate-900 to-purple-500/15 border border-slate-700/80">
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-orange-400 mb-1.5">
-                      <Info className="w-4 h-4" /> Why Model Gap Analysis Matters
+                  {/* Platform User Value Proposition (Dual Persona Emphasis) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {/* For Residents & Homeowners */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-slate-900 to-slate-950 border border-emerald-500/30 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-400">
+                        <Home className="w-4 h-4" /> Built For Residents & Property Owners
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        {data.user_value_proposition?.for_residents}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                          ✓ Insurance Transparency
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                          ✓ Zone 0 (0-5ft) Audit
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                          ✓ CDI Mandatory Discounts
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      {data.executive_summary}
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 pt-3 border-t border-slate-800">
-                      <div className="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
-                        <div className="text-[11px] text-slate-400 font-medium">Model Agreement Overlap</div>
-                        <div className="text-lg font-extrabold text-emerald-400 mt-0.5">
-                          {data.regional_metrics?.agreement_area_percentage}%
-                        </div>
-                        <div className="text-[10px] text-slate-500">Concordant risk classification</div>
+
+                    {/* For Firefighters & Incident Commanders */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-orange-500/10 via-slate-900 to-slate-950 border border-orange-500/30 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-orange-400">
+                        <Shield className="w-4 h-4" /> Built For Firefighters & Incident Commanders
                       </div>
-                      <div className="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
-                        <div className="text-[11px] text-slate-400 font-medium">Under-Warning Discrepancy</div>
-                        <div className="text-lg font-extrabold text-rose-400 mt-0.5">
-                          {data.regional_metrics?.under_warning_percentage}%
-                        </div>
-                        <div className="text-[10px] text-slate-500">Bellwether AI High vs CAL FIRE Moderate</div>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        {data.user_value_proposition?.for_firefighters}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/10 text-orange-300 border border-orange-500/20">
+                          ✓ 100m Dynamic Probabilities
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/10 text-orange-300 border border-orange-500/20">
+                          ✓ 130ft Radiant Contagion ROI
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/10 text-orange-300 border border-orange-500/20">
+                          ✓ Live HRRR Wind Plumes
+                        </span>
                       </div>
-                      <div className="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
-                        <div className="text-[11px] text-slate-400 font-medium">CA FAIR Plan Surge Impact</div>
-                        <div className="text-lg font-extrabold text-purple-400 mt-0.5">
-                          {data.regional_metrics?.fair_plan_enrollment_surge}
-                        </div>
-                        <div className="text-[10px] text-slate-500">Driven by commercial cat-model gaps</div>
+                    </div>
+                  </div>
+
+                  {/* Regional Metric Highlights */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                      <div className="text-[11px] text-slate-400 font-medium">Model Agreement Overlap</div>
+                      <div className="text-xl font-black text-emerald-400 mt-0.5">
+                        {data.regional_metrics?.agreement_area_percentage}%
                       </div>
+                      <div className="text-[10px] text-slate-500">Concordant risk classification area</div>
+                    </div>
+                    <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                      <div className="text-[11px] text-slate-400 font-medium">Regulatory Under-Warning Gap</div>
+                      <div className="text-xl font-black text-rose-400 mt-0.5">
+                        {data.regional_metrics?.under_warning_percentage}%
+                      </div>
+                      <div className="text-[10px] text-slate-500">Bellwether AI High vs CAL FIRE Moderate</div>
+                    </div>
+                    <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                      <div className="text-[11px] text-slate-400 font-medium">FAIR Plan Surge (Insurance Crisis)</div>
+                      <div className="text-xl font-black text-purple-400 mt-0.5">
+                        {data.regional_metrics?.fair_plan_enrollment_surge}
+                      </div>
+                      <div className="text-[10px] text-slate-500">Driven by commercial black-box models</div>
                     </div>
                   </div>
 
@@ -290,7 +346,7 @@ export default function ModelEvaluationModal({
                       Comparing 8 critical operational and technical dimensions across the three off-the-shelf paradigms.
                     </span>
                     <span className="text-orange-400 font-semibold text-[11px]">
-                      SBFire Pilot Objective 1 Baseline
+                      Interactive GIS Architecture
                     </span>
                   </div>
 
@@ -338,7 +394,7 @@ export default function ModelEvaluationModal({
                 <div className="space-y-4">
                   <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-300">
                     <p>
-                      Real-world geographic case studies in the San Bruno Wildland-Urban Interface (WUI) and San Francisco Watershed,
+                      Real-world geographic case studies in the Wildland-Urban Interface (WUI) and San Francisco Watershed,
                       demonstrating the root causes of divergence between machine learning models and statutory regulations.
                     </p>
                   </div>
@@ -386,7 +442,7 @@ export default function ModelEvaluationModal({
 
                           <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-800/60 space-y-1">
                             <div className="font-bold text-emerald-400 flex items-center gap-1.5">
-                              <ShieldAlert className="w-3.5 h-3.5" /> Operational Implication for SBFD
+                              <ShieldAlert className="w-3.5 h-3.5" /> Operational Implication
                             </div>
                             <p className="text-slate-300 leading-relaxed text-[11px]">{c.operational_implication}</p>
                           </div>
@@ -532,7 +588,93 @@ export default function ModelEvaluationModal({
                 </div>
               )}
 
-              {/* TAB 5: GUIDELINES & ACTIONABLE RECOMMENDATIONS */}
+              {/* TAB 5: ACADEMIC SOTA & FRONTIER AI MODELS */}
+              {activeTab === 'academic_ai' && (
+                <div className="space-y-5">
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-500/15 via-slate-900 to-indigo-500/15 border border-slate-700/80 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-400">
+                      <BrainCircuit className="w-4 h-4" /> Frontier AI & Open-Source Research Landscape
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Beyond off-the-shelf commercial models, computational wildfire science has witnessed groundbreaking advances in
+                      <strong> Physics-Informed Neural Networks (PINNs)</strong>, <strong>Fourier Neural Operators (FNO)</strong>, and
+                      <strong> Multimodal Foundation Models (LLMs)</strong>. Below is the state of the art in open-source research and
+                      how foundation models reason over fire environments.
+                    </p>
+                  </div>
+
+                  {/* Open-Source SOTA Models Grid */}
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-3">
+                      <Cpu className="w-4 h-4 text-orange-400" />
+                      Academic Open-Source Wildfire SOTA Models & Benchmarks
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                      {data.academic_and_frontier_models?.open_source_models?.map((model: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-2 hover:border-slate-700 transition-all shadow-md"
+                        >
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-slate-100">{model.name}</h4>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                              {model.open_access}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-semibold text-orange-400">{model.paradigm}</div>
+                          <p className="text-[11px] text-slate-300 leading-relaxed bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
+                            {model.highlights}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* What Data is Needed for LLM-based Wildfire Prediction */}
+                  <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+                    <div className="border-b border-slate-800 pb-3">
+                      <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                        <Database className="w-4 h-4 text-emerald-400" />
+                        If Foundation Models (LLMs) Predict Wildfires: What Data is Needed?
+                      </h3>
+                      <p className="text-xs text-slate-300 leading-relaxed mt-1">
+                        {data.academic_and_frontier_models?.llm_prediction_requirements?.overview}
+                      </p>
+                    </div>
+
+                    {/* 6 Essential Data Categories */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {data.academic_and_frontier_models?.llm_prediction_requirements?.required_data_inputs?.map(
+                        (inp: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1.5"
+                          >
+                            <div className="text-xs font-bold text-emerald-400">{inp.category}</div>
+                            <p className="text-[11px] text-slate-300 leading-relaxed">{inp.variables}</p>
+                            <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-800/60 flex items-center justify-between">
+                              <span>Update Cadence:</span>
+                              <span className="font-semibold text-slate-400">{inp.frequency}</span>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    {/* Agentic ReAct Architecture */}
+                    <div className="p-4 rounded-xl bg-gradient-to-r from-orange-500/10 via-slate-950 to-indigo-500/10 border border-orange-500/30 space-y-1.5">
+                      <div className="text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" /> Agentic ReAct Tool-Use Architecture
+                      </div>
+                      <p className="text-xs text-slate-200 leading-relaxed">
+                        {data.academic_and_frontier_models?.llm_prediction_requirements?.agentic_reasoning_architecture}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: GUIDELINES & ACTIONABLE RECOMMENDATIONS */}
               {activeTab === 'guidelines' && (
                 <div className="space-y-4">
                   <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-300">
@@ -607,7 +749,7 @@ export default function ModelEvaluationModal({
         <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400 shrink-0">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Pilot Collaboration: San Bruno Fire Dept × SJSU WIRC × Google X Bellwether</span>
+            <span>Wildfire Risk Intelligence Platform • Serving Residents, Firefighters & Municipal Planners</span>
           </div>
           <button
             onClick={onClose}

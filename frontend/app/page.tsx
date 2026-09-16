@@ -7,16 +7,18 @@ import CorridorMetricsCard from './components/CorridorMetricsCard';
 import RiskDriversChart from './components/RiskDriversChart';
 import DataCatalogModal from './components/DataCatalogModal';
 import ModelEvaluationModal from './components/ModelEvaluationModal';
+import AICopilotDrawer from './components/AICopilotDrawer';
 
 const MapView = dynamic(() => import('./components/MapView'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-slate-400 gap-3">
       <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      <span className="text-sm font-medium">Loading San Bruno / San Jose GIS Map & Multi-Source Overlays...</span>
+      <span className="text-sm font-medium">Loading Wildfire Risk Intelligence GIS Map & Multi-Source Overlays...</span>
     </div>
   ),
 });
+
 
 export default function Home() {
   const [activeLayer, setActiveLayer] = useState<'1yr' | '5yr' | 'none'>('1yr');
@@ -107,7 +109,11 @@ export default function Home() {
         onClose={() => setIsModelEvalOpen(false)}
         selectedRegion={selectedRegion}
       />
+
+      {/* Floating AI Wildfire Copilot (MiniMax LLM with live GIS tools) */}
+      <AICopilotDrawer selectedRegion={selectedRegion} />
     </main>
   );
 }
+
 
