@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Flame, Layers, Eye, ShieldAlert, Sparkles, MapPin, Shield, Wind, BookOpen, Home, Mountain, Droplet, Radio } from 'lucide-react';
+import { Flame, Layers, Eye, ShieldAlert, Sparkles, MapPin, Shield, Wind, BookOpen, Home, Mountain, Droplet, Radio, Scale } from 'lucide-react';
 
 interface SidebarProps {
   activeLayer: '1yr' | '5yr' | 'none';
@@ -28,6 +28,7 @@ interface SidebarProps {
   setOpacity: (val: number) => void;
   layerStats: any;
   onOpenDataCatalog: () => void;
+  onOpenModelEvaluation: () => void;
 }
 
 export default function Sidebar({
@@ -55,7 +56,9 @@ export default function Sidebar({
   setOpacity,
   layerStats,
   onOpenDataCatalog,
+  onOpenModelEvaluation,
 }: SidebarProps) {
+
   const riskCategories = [
     { name: 'Very Low', range: '< 0.004%', color: '#228B22' },
     { name: 'Low', range: '0.004% - 0.02%', color: '#90EE90' },
@@ -98,15 +101,25 @@ export default function Sidebar({
           </select>
         </div>
 
+        {/* Model Evaluation & Gap Analysis Button */}
+        <button
+          onClick={onOpenModelEvaluation}
+          className="w-full mt-2.5 py-2.5 px-3 rounded-xl bg-gradient-to-r from-orange-500/25 via-slate-800 to-purple-500/25 hover:from-orange-500/35 hover:to-purple-500/35 border border-orange-500/40 text-xs font-bold text-orange-200 flex items-center justify-center gap-2 transition-all shadow-lg glow-orange group"
+        >
+          <Scale className="w-4 h-4 text-orange-400 group-hover:scale-110 transition-transform" />
+          <span>📊 Model Evaluation & Gap Analysis</span>
+        </button>
+
         {/* Data Catalog Documentation Button */}
         <button
           onClick={onOpenDataCatalog}
-          className="w-full mt-2.5 py-2 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 flex items-center justify-center gap-2 transition-all hover:border-orange-500/50 shadow-md"
+          className="w-full mt-2 py-2 px-3 rounded-xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 flex items-center justify-center gap-2 transition-all hover:border-slate-600 shadow-sm"
         >
           <BookOpen className="w-4 h-4 text-amber-400" />
-          📖 Open Data Catalog & Source Docs
+          <span>📖 Multi-Source Data Catalog</span>
         </button>
       </div>
+
 
       {/* Layer Controls */}
       <div className="p-5 space-y-4 flex-1">

@@ -183,6 +183,22 @@ def get_risk_factors():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/model-evaluation")
+def get_model_evaluation(
+    region: str = Query("san_bruno", description="Target region (san_bruno, san_jose, santa_cruz)")
+):
+    """
+    Get comprehensive Off-the-Shelf Model Evaluation & Gap Analysis data
+    comparing Google X Bellwether ML, CAL FIRE FHSZ, and Insurance Cat-Models.
+    """
+    try:
+        data = gis_service.get_model_evaluation_data(region=region)
+        return {"success": True, "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @app.post("/api/query-corridor")
 def query_corridor(req: QueryCorridorRequest):
     """Query wind-adjusted 130ft radiant heat corridor, cropland classification, and parcel ROI metrics."""

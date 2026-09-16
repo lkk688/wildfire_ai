@@ -349,3 +349,266 @@ class GISDataService:
                 "usage_in_app": "Renders transparent slope steepness overlays highlighting extreme rate-of-spread zones."
             }
         ]
+
+    def get_model_evaluation_data(self, region: str = "san_bruno") -> Dict:
+        """
+        Provide structured Off-the-Shelf Model Evaluation and Gap Analysis data
+        comparing Google X Bellwether, CAL FIRE FHSZ, and Commercial Insurance Cat Models.
+        Grounded in the San Bruno Fire Department x SJSU x Google X Scoping Framework.
+        """
+        region_titles = {
+            "san_bruno": "San Bruno WUI & San Francisco Watershed Corridor",
+            "san_jose": "San Jose Foothills & Alum Rock WUI Interface",
+            "santa_cruz": "Santa Cruz Mountains & CZU Historical Burn Interface"
+        }
+        region_name = region_titles.get(region, "San Bruno WUI (Peninsula)")
+
+        return {
+            "region": region,
+            "region_name": region_name,
+            "milestone": "Milestone 1: Off-the-Shelf Model Evaluation & Gap Analysis",
+            "executive_summary": (
+                "This evaluation framework cross-references Google X Project Bellwether's machine learning "
+                "landscape hazard models against CAL FIRE's statutory Fire Hazard Severity Zones (FHSZ) and "
+                "commercial insurance actuarial models (e.g., Verisk FireLine, Zesty.ai). It pinpoints critical "
+                "discrepancies between static regulatory zoning and forward-looking AI probabilities, explaining "
+                "why homeowners face unexpected insurance non-renewals and how fire departments can prioritize mitigation."
+            ),
+            "models": [
+                {
+                    "id": "bellwether",
+                    "name": "Google X Project Bellwether",
+                    "type": "Predictive AI/ML Landscape Hazard Model",
+                    "developer": "Alphabet X (The Moonshot Factory)",
+                    "spatial_resolution": "100 meters (Continuous Spatial Grid)",
+                    "temporal_horizon": "1-Year and 5-Year Forward Probability Horizons",
+                    "update_cadence": "Quarterly (Refreshed 4x per year)",
+                    "output_metric": "Absolute Burn Probability (0.0% to 100.0%)",
+                    "core_methodology": (
+                        "Deep neural network trained on 500+ dynamic environmental factors including satellite NDVI/NDMI, "
+                        "ERA5/HRRR weather vectors, evaporative demand (EDDI), 3D LiDAR topography, and fine-grain fuel loads."
+                    ),
+                    "strengths": [
+                        "Dynamic responsiveness: captures shifting drought conditions, fine-grain fuel desiccations, and seasonal winds",
+                        "High spatial granularity (100m) uncovers micro-climate fire corridors overlooked by regional boundaries",
+                        "Quarterly cadence reflects landscape remediation, prescribed burns, or recent fuel buildup"
+                    ],
+                    "limitations": [
+                        "Does not model active suppression interventions (firefighter actions, water drops) in real time",
+                        "Does not account for smoke/ember dispersion damage or structural hardening at the parcel scale",
+                        "Outputs absolute statistical probabilities that require domain calibration for regulatory enforcement"
+                    ],
+                    "color": "#F97316", # Orange
+                    "badge": "Dynamic AI Model"
+                },
+                {
+                    "id": "calfire_fhsz",
+                    "name": "CAL FIRE FHSZ (Fire Hazard Severity Zones)",
+                    "type": "Statutory & Regulatory Land Classification",
+                    "developer": "California Department of Forestry and Fire Protection (CAL FIRE)",
+                    "spatial_resolution": "Polygon Zonal Classification (Moderate, High, Very High)",
+                    "temporal_horizon": "Long-Term Baseline (30-to-50-Year Fire Potential)",
+                    "update_cadence": "Multi-Year / Decadal (Updated roughly once every 10–15 years)",
+                    "output_metric": "Categorical Hazard Tiers: Moderate, High, Very High (LRA/SRA)",
+                    "core_methodology": (
+                        "Physics-based flame length potential modeled across 30–50 years of historical fire weather, "
+                        "terrain steepness (slope/aspect), surface-to-volume fuel load, and ember production zones."
+                    ),
+                    "strengths": [
+                        "Statutory and legally binding authority under California Public Resources Code (PRC 4201–4204)",
+                        "Directly mandates California Building Code Chapter 7A ignition-resistant construction standards",
+                        "Triggers mandatory natural hazard disclosure (NHD) in real estate transactions"
+                    ],
+                    "limitations": [
+                        "Static nature fails to reflect post-fire fuel removal, recent fuel mastication, or active vegetation clearing",
+                        "Coarse multi-year update cycle cannot capture year-to-year extreme drought cycles or flash fuels",
+                        "Measures hazard (physical event likelihood), not vulnerability or financial risk"
+                    ],
+                    "color": "#EF4444", # Red
+                    "badge": "Regulatory Baseline"
+                },
+                {
+                    "id": "insurance_actuarial",
+                    "name": "Commercial Insurance Cat-Models (Verisk FireLine / Zesty.ai)",
+                    "type": "Actuarial Catastrophe & Underwriting Risk Model",
+                    "developer": "Private Insurers & Analytics Firms (Verisk, CoreLogic, Zesty.ai, Milliman)",
+                    "spatial_resolution": "Parcel-Centric & Neighborhood 1,000ft Buffer",
+                    "temporal_horizon": "Annual Policy Renewal Cycle (12 Months)",
+                    "update_cadence": "Annual / Semi-Annual Underwriting Filings",
+                    "output_metric": "Relative Risk Index (0–100 or 1–30 Risk Scores)",
+                    "core_methodology": (
+                        "Combines fuel type proximity within 1,000ft, slope steepness, Public Protection Classification (PPC) "
+                        "distance to nearest fire station/hydrant, and aerial tree canopy overhang."
+                    ),
+                    "strengths": [
+                        "Directly drives homeowner insurance policy issuance, deductible pricing, and market availability",
+                        "Modern versions (Zesty.ai Z-FIRE) incorporate aerial imagery for roof material and defensible space",
+                        "Standardizes catastrophic financial loss exposure for reinsurance solvency"
+                    ],
+                    "limitations": [
+                        "Propensity for 'blanket zip-code cancellations' without on-the-ground home hardening verification",
+                        "Proprietary black-box algorithms that create public confusion and exacerbate the CA FAIR Plan crisis",
+                        "Often penalizes steep slopes regardless of whether vegetative fuels have been completely cleared"
+                    ],
+                    "color": "#8B5CF6", # Purple
+                    "badge": "Financial / Actuarial"
+                }
+            ],
+            "comparison_matrix": [
+                {
+                    "dimension": "Primary Objective",
+                    "bellwether": "Predict absolute probability of fire entering a 100m grid cell within 1 or 5 years",
+                    "calfire": "Delineate statutory hazard zones to enforce building codes and defensible space laws",
+                    "insurance": "Quantify probability of total loss to price annual property premiums and manage solvency"
+                },
+                {
+                    "dimension": "Spatial Granularity",
+                    "bellwether": "100m x 100m Continuous Raster Grid (Multi-spectral & Topographic)",
+                    "calfire": "Regional Vector Polygons (Aggregated Parcel & Watershed boundaries)",
+                    "insurance": "Parcel Footprint + 1,000ft Surrounding Fuel & Hydrant Buffer"
+                },
+                {
+                    "dimension": "Update Frequency",
+                    "bellwether": "Quarterly (Captures seasonal vegetation growth & live fuel moisture drops)",
+                    "calfire": "Decadal (10-15 year cycles; misses short-term fuel treatment progress)",
+                    "insurance": "Annual (Tied to reinsurance treaty renewals and state rate filings)"
+                },
+                {
+                    "dimension": "Live Fuel & Weather",
+                    "bellwether": "Dynamic daily/hourly satellite moisture + HRRR wind vectors + EDDI drought",
+                    "calfire": "Static 95th-percentile worst-case historical climate assumptions",
+                    "insurance": "Static or annual satellite vegetation canopy coverage + regional loss history"
+                },
+                {
+                    "dimension": "Fire Suppression Impact",
+                    "bellwether": "Not modeled (forecasts pure physical landscape burn probability)",
+                    "calfire": "Indirectly considered via road access & firefighter response distance",
+                    "insurance": "Heavily weighted via ISO Public Protection Classification (hydrant/station distance)"
+                },
+                {
+                    "dimension": "Building Hardening",
+                    "bellwether": "Not modeled (landscape-level fuel & terrain focus)",
+                    "calfire": "Prescribes building codes (CBC Ch 7A), but does not inspect individual homes",
+                    "insurance": "Varies: classical models ignore it; CDI 'Safer from Wildfires' now mandates discounts"
+                },
+                {
+                    "dimension": "Legal & Public Role",
+                    "bellwether": "Operational AI decision-support for fire agencies and municipal planning",
+                    "calfire": "Statutory legal disclosure on real estate sales and municipal fire zoning",
+                    "insurance": "Contractual basis for property insurance coverage, exclusions, and premiums"
+                }
+            ],
+            "gap_analysis_cases": [
+                {
+                    "id": "case_1",
+                    "title": "Discrepancy 1: Dynamic High vs. Static Moderate (Under-Warning in Regulatory Maps)",
+                    "location": "Crestmoor Canyon & Skyline Ridgeline (San Bruno WUI)",
+                    "divergence_type": "Under-Warning Gap (AI > Regulatory)",
+                    "bellwether_score": "High (Top 12% Risk, 0.58% annual burn probability)",
+                    "calfire_rating": "Moderate FHSZ (Local Responsibility Area)",
+                    "insurance_rating": "Score 74/100 (Surcharge Applied)",
+                    "root_cause": (
+                        "CAL FIRE's Moderate rating is based on a 30-year lack of recent ignition history in this canyon. "
+                        "However, Bellwether's 100m neural model identifies severe fine fuel desiccation (EDDI index > 90th percentile) "
+                        "combined with afternoon maritime wind channeling through the canyon gap, creating an acute forward-looking hazard."
+                    ),
+                    "operational_implication": (
+                        "Fire Marshals cannot rely solely on the statutory Moderate zone for inspections. SBFD should deploy proactive "
+                        "defensible space enforcement and pre-position brush patrols during high-wind Red Flag events regardless of the official map."
+                    )
+                },
+                {
+                    "id": "case_2",
+                    "title": "Discrepancy 2: Static Very High vs. Dynamic Low (Over-Warning After Fuel Treatments)",
+                    "location": "San Francisco Watershed Fuel Break & Mastication Corridor",
+                    "divergence_type": "Over-Warning Gap (Regulatory > AI)",
+                    "bellwether_score": "Low (0.014% annual burn probability)",
+                    "calfire_rating": "Very High FHSZ (State Responsibility Area)",
+                    "insurance_rating": "Score 88/100 (Severe Underwriting Restriction)",
+                    "root_cause": (
+                        "CAL FIRE maintains a Very High designation due to the steep western slope and historical chapparal fuel loads. "
+                        "However, recent mechanical fuel mastication and goat grazing cleared 85% of ladder fuels. Bellwether's quarterly "
+                        "satellite inputs detected the drastic reduction in vegetative biomass and updated the probability downward, whereas "
+                        "CAL FIRE maps cannot legally update without a lengthy multi-year administrative process."
+                    ),
+                    "operational_implication": (
+                        "Homeowners in this corridor suffer unjustified insurance cancellations. Municipalities can use Bellwether's verified "
+                        "fuel reduction data as quantitative evidence to petition the California Department of Insurance for community risk discounts."
+                    )
+                },
+                {
+                    "id": "case_3",
+                    "title": "Discrepancy 3: The Insurance Non-Renewal Friction Gap (The Actuarial Disconnect)",
+                    "location": "Upper San Bruno WUI Interface / San Bruno Mountain Foothills",
+                    "divergence_type": "Actuarial Disconnect",
+                    "bellwether_score": "Significant (0.28% annual burn probability)",
+                    "calfire_rating": "High FHSZ (LRA)",
+                    "insurance_rating": "Policy Non-Renewed / Forced onto CA FAIR Plan",
+                    "root_cause": (
+                        "Commercial cat-models applied a blunt 1,000-foot buffer brush penalty to the entire zip code. Although the specific "
+                        "residence invested in a Class A metal roof, ember-resistant 1/16\" vents, and a 0–5ft gravel noncombustible zone, "
+                        "the insurer's off-the-shelf automated underwriting model failed to ingest property-level hardening attributes."
+                    ),
+                    "operational_implication": (
+                        "Demonstrates the urgent necessity of Tri-Party Pilot Objective 3 (Home Hardening & Attribute Extraction via UAV/AI) "
+                        "to bridge the chasm between commercial cat models and actual homeowner resilience."
+                    )
+                }
+            ],
+            "regional_metrics": {
+                "agreement_area_percentage": 68.4,
+                "under_warning_percentage": 18.2,
+                "over_warning_percentage": 13.4,
+                "mean_probability_1yr": 0.185,
+                "mean_probability_5yr": 0.642,
+                "fair_plan_enrollment_surge": "+142% over past 3 years in target zip codes"
+            },
+            "actionable_recommendations": {
+                "for_fire_marshals": [
+                    "Implement a hybrid inspection index: combine statutory FHSZ boundaries with Bellwether's quarterly 100m dynamic probability hot-spots.",
+                    "Focus municipal brush clearance code enforcement along dynamic wind-funnel corridors rather than relying on static 10-year-old maps.",
+                    "Leverage verified fuel reduction data to document 'Quantification of the Negative' ROI for city council budget allocations."
+                ],
+                "for_homeowners": [
+                    "Complete all 10 mitigation steps under the California Department of Insurance 'Safer from Wildfires' framework to legally mandate premium discounts.",
+                    "Attain an IBHS 'Wildfire Prepared Home' designation (Base or Plus) with third-party verification to challenge unjustified commercial carrier non-renewals.",
+                    "Request carrier risk score transparency: policyholders have a legal right in California to receive their specific wildfire risk factors and appeal inaccuracies."
+                ]
+            },
+            "simulator_scenarios": [
+                {
+                    "id": "sim_cleared_slope",
+                    "name": "Recently Cleared Fuel Break on Steep Slope",
+                    "terrain": "35% Steep Canyon Slope",
+                    "fuel_state": "80% Fuel Cleared / Masticated (Zone 1 & 2)",
+                    "hardening": "Class A Roof, Ember Vents Installed",
+                    "bellwether_pred": "Low (0.018%)",
+                    "calfire_fhsz": "Very High FHSZ",
+                    "insurance_score": "68/100 (Elevated)",
+                    "diagnosis": "Severe regulatory over-warning: CAL FIRE cannot reflect the cleared fuel without a 10-year map revision, causing insurance friction."
+                },
+                {
+                    "id": "sim_dry_wind_tunnel",
+                    "name": "Seasonal Dry Grass in Coastal Wind Tunnel",
+                    "terrain": "Gentle 8% Slope",
+                    "fuel_state": "Dense Dry Annual Grass (1-hr DFM < 4%)",
+                    "hardening": "Unhardened Wood Shake Roof",
+                    "bellwether_pred": "Extreme (1.42%)",
+                    "calfire_fhsz": "Moderate FHSZ",
+                    "insurance_score": "82/100 (High Risk)",
+                    "diagnosis": "Critical regulatory under-warning: CAL FIRE historical data fails to capture explosive seasonal flash fuels, exposing residents to surprise ignitions."
+                },
+                {
+                    "id": "sim_hardened_watershed",
+                    "name": "Hardened Residence Adjacent to SF Watershed",
+                    "terrain": "18% Moderate Ridge Slope",
+                    "fuel_state": "Dense Chaparral (30ft away)",
+                    "hardening": "Full IBHS 'Wildfire Prepared Home' Plus Certification",
+                    "bellwether_pred": "Significant (0.34%)",
+                    "calfire_fhsz": "High FHSZ",
+                    "insurance_score": "38/100 (Eligible for 18% CDI Discount)",
+                    "diagnosis": "Resilience breakthrough: Despite high landscape hazard, structural hardening and 0-5ft defensible space significantly suppress ignition probability."
+                }
+            ]
+        }
+

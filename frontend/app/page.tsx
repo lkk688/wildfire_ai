@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import CorridorMetricsCard from './components/CorridorMetricsCard';
 import RiskDriversChart from './components/RiskDriversChart';
 import DataCatalogModal from './components/DataCatalogModal';
+import ModelEvaluationModal from './components/ModelEvaluationModal';
 
 const MapView = dynamic(() => import('./components/MapView'), {
   ssr: false,
@@ -32,6 +33,8 @@ export default function Home() {
   const [selectedCorridorData, setSelectedCorridorData] = useState<any>(null);
   const [layerStats, setLayerStats] = useState<any>(null);
   const [isDataCatalogOpen, setIsDataCatalogOpen] = useState<boolean>(false);
+  const [isModelEvalOpen, setIsModelEvalOpen] = useState<boolean>(false);
+
 
   return (
     <main className="flex w-screen h-screen overflow-hidden bg-slate-950 relative">
@@ -61,6 +64,7 @@ export default function Home() {
         setOpacity={setOpacity}
         layerStats={layerStats}
         onOpenDataCatalog={() => setIsDataCatalogOpen(true)}
+        onOpenModelEvaluation={() => setIsModelEvalOpen(true)}
       />
 
       {/* Main Interactive Map View */}
@@ -96,6 +100,14 @@ export default function Home() {
         isOpen={isDataCatalogOpen}
         onClose={() => setIsDataCatalogOpen(false)}
       />
+
+      {/* Off-the-Shelf Model Evaluation & Gap Analysis Modal */}
+      <ModelEvaluationModal
+        isOpen={isModelEvalOpen}
+        onClose={() => setIsModelEvalOpen(false)}
+        selectedRegion={selectedRegion}
+      />
     </main>
   );
 }
+
