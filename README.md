@@ -205,6 +205,7 @@ python3 -c "from src.academic_models import AcademicBenchmarkRunner; import json
 ## 📚 7. Project Documentation Index
 
 *   📘 **[Academic Wildfire Models Benchmark (docs/ACADEMIC_WILDFIRE_MODELS_BENCHMARK.md)](docs/ACADEMIC_WILDFIRE_MODELS_BENCHMARK.md)**: Deep dive into physical Level-Set PDEs, Cellular Automata, Google NDWS benchmark, and research roadmaps.
+*   📓 **[Wildfire Ground-Truth & Benchmark Tutorial (docs/WILDFIRE_GROUND_TRUTH_DATA_TUTORIAL.md)](docs/WILDFIRE_GROUND_TRUTH_DATA_TUTORIAL.md)**: Guide to ground-truth label datasets in `/data/wildfire_benchmark_data/` (WFIGS, CAL FIRE DINS, USGS MTBS, NASA FIRMS, WildfireSpreadTS).
 *   📕 **[Interdisciplinary Survey Report (docs/WILDFIRE_AI_SURVEY_REPORT.md)](docs/WILDFIRE_AI_SURVEY_REPORT.md)**: Comprehensive survey on CS/AI interdisciplinary research, causal inference, and WUI computer vision.
 *   📗 **[Technical Data Pipeline & GIS Specifications (src/README.md)](src/README.md)**: In-depth technical specifications for all 10 integrated geospatial datasets, mathematical formulas, and student research projects.
 *   📙 **[System Architecture & Walkthrough (src/walkthrough.md)](src/walkthrough.md)**: Step-by-step engineering walkthrough of the multi-source GIS ingestion pipeline.
