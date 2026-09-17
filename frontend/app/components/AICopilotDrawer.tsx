@@ -38,7 +38,21 @@ export default function AICopilotDrawer({ selectedRegion }: AICopilotDrawerProps
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [prompts, setPrompts] = useState<string[]>([]);
+  const [providerModel, setProviderModel] = useState<string>('LLM Engine');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch provider configuration dynamically
+  useEffect(() => {
+    fetch('http://localhost:8000/api/ai/provider-status')
+      .then((res) => res.json())
+      .then((data) => {
+        const modelName = data.status?.model || data.model || 'OpenAI Compatible';
+        setProviderModel(modelName);
+      })
+      .catch(() => {
+        setProviderModel('LLM Engine');
+      });
+  }, []);
 
   // Default greeting when drawer opens or persona changes
   useEffect(() => {
@@ -178,7 +192,7 @@ Ask me any question below or click a suggested topic to begin!`,
           </div>
           <div className="text-left">
             <div className="text-xs uppercase tracking-wider text-slate-950 font-black">AI Wildfire Copilot</div>
-            <div className="text-[10px] text-slate-900 font-medium">MiniMax-M3 Reasoning & Live GIS</div>
+            <div className="text-[10px] text-slate-900 font-medium">OpenAI-Compatible & Live GIS</div>
           </div>
         </button>
       )}
@@ -198,7 +212,7 @@ Ask me any question below or click a suggested topic to begin!`,
                   <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                     Wildfire AI Copilot
                     <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      MiniMax-M3
+                      {providerModel}
                     </span>
                   </h3>
                   <p className="text-[10px] text-slate-400">Autonomous GIS Tool-Calling & Reasoning</p>
@@ -312,7 +326,7 @@ Ask me any question below or click a suggested topic to begin!`,
             {isLoading && (
               <div className="flex items-center gap-2 text-orange-400 text-xs p-3 rounded-2xl bg-slate-950/60 border border-slate-800 animate-pulse">
                 <Flame className="w-4 h-4 animate-spin" />
-                <span>MiniMax-M3 is querying GIS datasets and analyzing telemetry...</span>
+                <span>{providerModel} is querying GIS datasets and analyzing telemetry...</span>
               </div>
             )}
             <div ref={messagesEndRef} />

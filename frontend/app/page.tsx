@@ -110,7 +110,7 @@ export default function Home() {
         selectedRegion={selectedRegion}
       />
 
-      {/* Floating AI Wildfire Copilot (MiniMax LLM with live GIS tools) */}
+      {/* Floating AI Wildfire Copilot (OpenAI-Compatible LLM with live GIS tools) */}
       <AICopilotDrawer selectedRegion={selectedRegion} />
     </main>
   );

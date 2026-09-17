@@ -14,9 +14,15 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.services import GISDataService, STATIC_DIR
-from backend.ai import WildfireAIAgent
+from backend.ai import WildfireAIAgent, AIConfig
+from src.academic_models import (
+    RothermelLevelSetSimulator,
+    CellularAutomataSimulator,
+    AcademicBenchmarkRunner,
+)
 
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
+
 
 app = FastAPI(
     title="Wildfire Risk Intelligence & Mitigation Platform API",
@@ -50,6 +56,24 @@ class AIChatRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
+class SwitchProviderRequest(BaseModel):
+    provider: str
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class AcademicSimulationRequest(BaseModel):
+    model_type: str = "rothermel_level_set"  # "rothermel_level_set" or "cellular_automata"
+    wind_speed_ms: float = 8.0
+    wind_dir_deg: float = 45.0
+    fuel_moisture: float = 0.08
+    duration_minutes: float = 60.0
+    grid_size: int = 80
+    spotting: bool = True
+
+
+
 @app.get("/")
 def root():
     return {
@@ -60,7 +84,7 @@ def root():
             "Multi-Source GIS Overlays (NASA FIRMS, CAL FIRE, RAWS, USGS 3DEP)",
             "130ft Radiant Heat Contagion Scoping & Negative Value Quantification",
             "Home Hardening & Insurance Discount Compliance (CDI / IBHS)",
-            "Intelligent Wildfire AI Copilot with MiniMax LLM & Real-Time Tool Calling"
+            "Intelligent Wildfire AI Copilot with OpenAI-Compatible Multi-Model Reasoning & Real-Time GIS Tool Calling"
         ],
     }
 
@@ -240,6 +264,145 @@ def get_suggested_prompts(persona: str = Query("resident", description="'residen
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/ai/provider-status")
+def get_ai_provider_status():
+    """
+    Get active LLM provider status, model selection, and available presets
+    (MiniMax, Local Ollama, OpenAI, DeepSeek, vLLM).
+    """
+    try:
+        status = AIConfig.get_provider_status()
+        return {"success": True, "status": status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ai/switch-provider")
+def switch_ai_provider(req: SwitchProviderRequest):
+    """
+    Dynamically hot-swap the active LLM provider and model configuration
+    (e.g., minimax, ollama, openai, deepseek, vllm, or custom endpoint).
+    """
+    try:
+        updated_status = AIConfig.update_provider_config(
+            provider=req.provider,
+            model=req.model,
+            base_url=req.base_url,
+            api_key=req.api_key,
+        )
+        return {"success": True, "status": updated_status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+@app.get("/api/academic/models")
+def get_academic_models():
+    """
+    Returns available academic frontier wildfire models, theoretical paradigms,
+    and computational profiles.
+    """
+    return {
+        "success": True,
+        "models": [
+            {
+                "id": "rothermel_level_set",
+                "name": "Rothermel Level-Set PDE Solver",
+                "paradigm": "Physics-Based Continuous PDE",
+                "governing_equations": "∂ϕ/∂t + R(x, ∇ϕ) ‖∇ϕ‖ = 0 (Godunov Upwind Scheme)",
+                "strengths": "Strict energy conservation, smooth perimeter tracking, exact normal vectors",
+                "limitations": "Computational scaling on ultra-fine grids; requires coupled ember spotting operator",
+                "typical_latency_ms": 45.0,
+                "open_source": True,
+                "reference": "Rothermel (1972) / Osher & Sethian (1988) Level-Set Methods",
+            },
+            {
+                "id": "cellular_automata",
+                "name": "Alexandridis Stochastic Cellular Automata",
+                "paradigm": "Discrete Spatial Automata (8-Neighbor)",
+                "governing_equations": "p_burn = p0 * (1 + p_veg) * pw(V, θ) * ps(Δz)",
+                "strengths": "Ultra-fast execution, native stochastic firebrand ember jump modeling",
+                "limitations": "Grid-orientation anisotropy; lacks continuous thermodynamic coupling",
+                "typical_latency_ms": 95.0,
+                "open_source": True,
+                "reference": "Alexandridis et al. (2008) Applied Mathematical Modelling",
+            },
+            {
+                "id": "google_ndws",
+                "name": "Google Research NDWS Surrogate",
+                "paradigm": "Deep Learning Spatial-Temporal ConvNet",
+                "governing_equations": "12-channel multimodal satellite/weather to 24-hr fire mask mapping",
+                "strengths": "Millisecond inference, scales to regional multi-tile predictions",
+                "limitations": "Black-box non-physical spread leakage; OOD failure on extreme wind gusts",
+                "typical_latency_ms": 15.0,
+                "open_source": True,
+                "reference": "Huot et al. (Google Research, NeurIPS 2021 Datasets & Benchmarks)",
+            },
+            {
+                "id": "wsts_transformer",
+                "name": "WildfireSpreadTS Spatio-Temporal Transformer",
+                "paradigm": "Attention-Based Time Series Forecaster",
+                "governing_equations": "Multi-head spatial self-attention on multi-day VIIRS thermal footprints",
+                "strengths": "Captures multi-day sequence dynamics and seasonal regime shifts",
+                "limitations": "High GPU VRAM footprint; requires dense sequential satellite imagery",
+                "typical_latency_ms": 35.0,
+                "open_source": True,
+                "reference": "Gerhard et al. (NeurIPS 2023 / 2024)",
+            },
+        ],
+    }
+
+
+@app.get("/api/academic/benchmark-results")
+def get_academic_benchmark_results():
+    """
+    Executes and returns the standardized academic benchmark evaluation comparing
+    Level-Set PDE, Stochastic CA, Google NDWS, and Commercial Cat-Models.
+    """
+    try:
+        results = AcademicBenchmarkRunner.run_comprehensive_benchmark()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/academic/simulate")
+def run_academic_simulation(req: AcademicSimulationRequest):
+    """
+    Run an interactive on-demand physical or discrete wildfire propagation simulation.
+    """
+    try:
+        grid_dim = min(max(req.grid_size, 40), 120)
+        center = (grid_dim // 2, grid_dim // 2)
+
+        if req.model_type == "cellular_automata":
+            ca = CellularAutomataSimulator(grid_shape=(grid_dim, grid_dim), cell_size_m=10.0)
+            steps = min(max(int(req.duration_minutes), 10), 100)
+            res = ca.simulate(
+                ignition_coords=[center],
+                total_steps=steps,
+                wind_speed_ms=req.wind_speed_ms,
+                wind_dir_deg=req.wind_dir_deg,
+                fuel_moisture=req.fuel_moisture,
+                spotting_enabled=req.spotting,
+            )
+            return {"success": True, "simulation": res}
+        else:
+            rls = RothermelLevelSetSimulator(grid_shape=(grid_dim, grid_dim), dx=10.0, dy=10.0, fuel_model_id=4)
+            res = rls.solve_level_set(
+                ignition_coords=[center],
+                total_minutes=min(max(req.duration_minutes, 10.0), 120.0),
+                dt_minutes=0.25,
+                wind_speed_ms=req.wind_speed_ms,
+                wind_dir_deg=req.wind_dir_deg,
+                fuel_moisture=req.fuel_moisture,
+            )
+            return {"success": True, "simulation": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/query-corridor")

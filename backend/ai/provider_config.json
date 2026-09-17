@@ -1,0 +1,5 @@
+{
+  "active_provider": "minimax",
+  "model": "MiniMax-M3",
+  "description": "Multi-provider configuration. Available presets: 'minimax', 'ollama', 'openai', 'deepseek', 'vllm'. Change 'active_provider' or supply custom 'base_url' / 'model' to switch."
+}

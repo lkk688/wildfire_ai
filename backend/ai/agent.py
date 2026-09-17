@@ -6,7 +6,7 @@ Orchestrates persona system prompts, autonomous tool execution loops, and domain
 import json
 import logging
 from typing import Dict, Any, List, Optional
-from backend.ai.minimax_client import MiniMaxClient
+from backend.ai.openai_client import OpenAICompatibleClient
 from backend.ai.tools import WildfireToolRegistry
 from backend.services import GISDataService
 
@@ -16,13 +16,19 @@ logger = logging.getLogger("wildfire.agent")
 class WildfireAIAgent:
     def __init__(
         self,
-        client: Optional[MiniMaxClient] = None,
+        client: Optional[OpenAICompatibleClient] = None,
         tool_registry: Optional[WildfireToolRegistry] = None,
         gis_service: Optional[GISDataService] = None,
     ):
         self.gis = gis_service or GISDataService()
-        self.client = client or MiniMaxClient()
+        self._custom_client = client
         self.tools = tool_registry or WildfireToolRegistry(gis_service=self.gis)
+
+    @property
+    def client(self) -> OpenAICompatibleClient:
+        return self._custom_client if self._custom_client is not None else OpenAICompatibleClient()
+
+
 
     def _build_system_prompt(self, persona: str, context: Optional[Dict[str, Any]] = None) -> str:
         region = (context or {}).get("region", "san_bruno")
