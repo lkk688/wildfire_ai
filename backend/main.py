@@ -405,6 +405,18 @@ def run_academic_simulation(req: AcademicSimulationRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+from starlette.responses import FileResponse
+from src.vlm_benchmark.service import VLMBenchmarkService
+
+vlm_service = VLMBenchmarkService()
+
+
+class VLMPredictRequest(BaseModel):
+    model: str = "MiniMax-M3"
+    case_id: Optional[str] = None
+    custom_attributes: Optional[Dict[str, Any]] = None
+
+
 @app.post("/api/query-corridor")
 def query_corridor(req: QueryCorridorRequest):
     """Query wind-adjusted 130ft radiant heat corridor, cropland classification, and parcel ROI metrics."""
@@ -415,6 +427,71 @@ def query_corridor(req: QueryCorridorRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# WildfireReason-VLM Frontier Benchmark & Physical Reasoning Endpoints
+# ============================================================================
+
+@app.get("/api/vlm/benchmark/cases")
+def get_vlm_benchmark_cases():
+    """Retrieve all 50 ground-truth DINS benchmark cases with expert diagnosis."""
+    try:
+        return vlm_service.get_catalog()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/vlm/benchmark/results")
+def get_vlm_benchmark_results():
+    """Retrieve pre-computed multi-model evaluations for all 50 benchmark cases."""
+    try:
+        return vlm_service.get_all_results()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/vlm/benchmark/metrics")
+def get_vlm_benchmark_metrics():
+    """Retrieve cross-model comparative metrics scoreboard (MiniMax, Claude, Qwen)."""
+    try:
+        return vlm_service.get_metrics_scoreboard()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/vlm/benchmark/image/{case_id}")
+def get_vlm_benchmark_image(case_id: str):
+    """Serve high-resolution Zoom-18 aerial orthoimagery for benchmark parcel."""
+    img_path = vlm_service.get_image_path(case_id)
+    if not img_path:
+        raise HTTPException(status_code=404, detail=f"Image for case {case_id} not found")
+    return FileResponse(str(img_path), media_type="image/jpeg")
+
+
+@app.post("/api/vlm/predict")
+def run_vlm_live_predict(req: VLMPredictRequest):
+    """Execute live on-demand VLM/LLM fire reasoning prediction."""
+    try:
+        case_data = req.custom_attributes or {}
+        if req.case_id:
+            catalog = vlm_service.get_catalog()
+            matching = [item for item in catalog.get("items", []) if str(item["id"]) == str(req.case_id)]
+            if matching:
+                merged = dict(matching[0])
+                merged.update(case_data)
+                case_data = merged
+
+        if not case_data:
+            raise HTTPException(status_code=400, detail="Either valid case_id or custom_attributes must be provided")
+
+        result = vlm_service.run_live_prediction(model_name=req.model, case_data=case_data)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
+

@@ -45,7 +45,34 @@ This platform is engineered from the ground up to serve two critical stakeholder
 
 ## 📸 Core Features & Visual Interface
 
-### 1. Autonomous AI Wildfire Copilot (ReAct GIS Agent)
+### 1. WildfireReason-VLM: Forensic Ignition Attribution & Defect Discovery Workstation
+
+A dedicated, peer-review-grade Vision-Language Model (VLM) benchmark and physical causality inspection workstation. It benchmarks leading frontier models against real-world post-fire structural damage inspections from the **CAL FIRE Damage Inspection Specialist (DINS)** database paired with **sub-meter ESRI World Imagery (Zoom 18)**:
+
+[![Watch VLM Fire Vision Demo](docs/assets/vlm_fire_vision_workstation.png)](docs/assets/vlm_fire_vision_demo.webp)
+> 📹 **Live Demonstration Animation**: Click image above or view [Full Session Recording (WebP)](docs/assets/vlm_fire_vision_demo.webp) demonstrating bidirectional mode switching, 50-case browsing, collapsible CoT reasoning traces, expert forensic defect analysis, and live multi-model execution.
+
+![Expert Fire Forensic Defect Analysis](docs/assets/vlm_fire_defect_analysis.png)
+
+*   **Bidirectional Application Switcher**: Instant 1-click global toggle between the **🗺️ 3D Risk GIS Map** and the **👁️ VLM Fire Vision & Reasoning Benchmark**.
+*   **Empirical 4-Model Benchmark Scoreboard**:
+    *   **MiniMax-M3 (Commercial CoT)**: 50.00% Accuracy, 92.0% False Alarm Rate, 17.4% Locus Attribution Accuracy.
+    *   **Claude Haiku 5.5 (`claude-haiku-5-5`)**: 50.00% Accuracy, 88.0% False Alarm Rate, 4.5% Locus Attribution Accuracy.
+    *   **Claude Sonnet 5.5 (`claude-sonnet-5-5`)**: 50.00% Accuracy, 88.0% False Alarm Rate, 18.2% Locus Attribution Accuracy.
+    *   **Qwen3.8-27B (Remote vLLM)**: 48.00% Accuracy, 100.0% False Alarm Rate (0 survived homes detected), 12.5% Locus Attribution Accuracy.
+*   **Sub-Meter Aerial Imagery & Forensic GT Pairing**:
+    *   High-resolution Zoom 18 orthoimagery (0.3m/pixel) capturing parcel geometry, 0–5ft Zone 0 buffers, gravel driveways, and tree overhangs.
+    *   Forensic CAL FIRE DINS ground truth: verified damage severity (`No Damage` to `Destroyed`), exact initial ignition point (`WHEREFIRESTARTEDONSTRUCTURE`), and emergency responder suppression actions (`Hand Crew Fuel Break`, `Engine Protection`).
+*   **Collapsible Chain-of-Thought (CoT) Traces**: Expandable native thinking drawer (`<think>` tokens) exposing how each model constructs its deductive chain.
+*   **Expert Fire Forensic Defect Breakdown ("错在哪")**: Case-by-case diagnosis pinpointing the exact failure mode:
+    *   *Tactical Fire Suppression Blind Spot*: Models ignoring hand-crew fuel breaks that successfully saved pre-code structures.
+    *   *The "Everything Burns" Hyper-Pessimism*: Red Flag ambient tokens triggering total loss predictions despite Class A roofing and $\le 1/8"$ ember screens.
+    *   *Siding vs. Vent Shortcut Heuristics*: Models defaulting to superficial material keywords without computing physical flux thresholds.
+*   **Interactive Live Model Execution**: On-demand inference runner allowing users or evaluators to query any of the 4 models live, streaming back latency and parsed predictions.
+
+---
+
+### 2. Autonomous AI Wildfire Copilot (ReAct GIS Agent)
 
 The platform features an embedded AI Copilot equipped with autonomous tool-calling capabilities. Powered by a generic OpenAI-compatible backend, the Copilot dynamically queries live GIS datasets, calculates corridor risk, checks fuel moisture thresholds, and provides tailored intelligence for residents and incident commanders.
 
@@ -57,7 +84,7 @@ The platform features an embedded AI Copilot equipped with autonomous tool-calli
 
 ---
 
-### 2. Off-the-Shelf Model Evaluation & Gap Analysis
+### 3. Off-the-Shelf Model Evaluation & Gap Analysis
 
 A dedicated educational and diagnostic panel allowing users to compare leading wildfire risk models side-by-side:
 

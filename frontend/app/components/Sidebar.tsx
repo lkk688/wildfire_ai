@@ -29,6 +29,7 @@ interface SidebarProps {
   layerStats: any;
   onOpenDataCatalog: () => void;
   onOpenModelEvaluation: () => void;
+  onSwitchToVision?: () => void;
 }
 
 export default function Sidebar({
@@ -57,6 +58,7 @@ export default function Sidebar({
   layerStats,
   onOpenDataCatalog,
   onOpenModelEvaluation,
+  onSwitchToVision,
 }: SidebarProps) {
 
   const riskCategories = [
@@ -118,6 +120,20 @@ export default function Sidebar({
           <BookOpen className="w-4 h-4 text-amber-400" />
           <span>📖 Multi-Source Data Catalog</span>
         </button>
+
+        {/* Vision & Reasoning Benchmark Button */}
+        {onSwitchToVision && (
+          <button
+            onClick={onSwitchToVision}
+            className="w-full mt-2 py-2.5 px-3 rounded-xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-indigo-950/60 hover:from-purple-900/60 hover:to-indigo-900/60 border border-purple-500/40 text-xs font-bold text-purple-200 flex items-center justify-center gap-2 transition-all shadow-md group"
+          >
+            <Eye className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+            <span>👁️ VLM Fire Vision Benchmark</span>
+            <span className="px-1.5 py-0.5 rounded text-[9px] bg-purple-500/30 text-purple-300 border border-purple-400/40 font-bold uppercase tracking-wider">
+              NEW
+            </span>
+          </button>
+        )}
       </div>
 
 
