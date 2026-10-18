@@ -17,12 +17,32 @@ class DINSBaselineEvaluator:
         benchmark_json_path: str = "/Developer/wildfire_ai/SBFire_SJSU-20260730T030001Z-1-001/benchmark_results/dins_vlm_benchmark_50.json",
         output_dir: str = "/Developer/wildfire_ai/SBFire_SJSU-20260730T030001Z-1-001/benchmark_results",
     ):
-        self.api_key = api_key or os.environ.get("MINIMAX_API_KEY", "")
-        self.endpoint_url = endpoint_url or os.environ.get("LLM_ENDPOINT", "https://api.minimaxi.com/v1/chat/completions")
         self.model_name = model_name or os.environ.get("LLM_MODEL", "MiniMax-M3")
+        self.is_claude = self.model_name.lower().startswith("claude")
+
+        if self.is_claude:
+            self.endpoint_url = endpoint_url or "https://api.anthropic.com/v1/messages"
+            self.api_key = api_key or self._get_claude_api_key()
+        else:
+            self.endpoint_url = endpoint_url or os.environ.get("LLM_ENDPOINT", "https://api.minimaxi.com/v1/chat/completions")
+            self.api_key = api_key or os.environ.get("MINIMAX_API_KEY", "")
+
         self.benchmark_json_path = Path(benchmark_json_path)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_claude_api_key(self) -> str:
+        k = os.environ.get("CLAUDE_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
+        if not k:
+            try:
+                with open(os.path.expanduser("~/.bashrc")) as f:
+                    for line in f:
+                        if "CLAUDE_API_KEY" in line and "=" in line:
+                            k = line.split("=")[1].strip().strip("'\"")
+                            break
+            except Exception:
+                pass
+        return k
 
     def _format_prompt(self, item: Dict[str, Any]) -> str:
         prompt = f"""You are an expert wildfire structural protection and fire forensic analyst.
@@ -55,31 +75,59 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
         return prompt
 
     def query_model(self, prompt: str) -> Dict[str, Any]:
-        """Query LLM/VLM API endpoint with optional Bearer auth."""
-        payload = {
-            "model": self.model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 1500,
-            "temperature": 0.1,
-        }
-        data = json.dumps(payload).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-
-        req = urllib.request.Request(self.endpoint_url, data=data, headers=headers)
-
+        """Query LLM/VLM API endpoint with optional Bearer or Anthropic auth."""
         t0 = time.perf_counter()
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                res_json = json.loads(resp.read().decode("utf-8"))
-                latency = round(time.perf_counter() - t0, 2)
-                choice = res_json.get("choices", [{}])[0]
-                msg = choice.get("message", {})
-                content = msg.get("content", "")
-                reasoning = msg.get("reasoning", "")
-                full_text = (reasoning + "\n" + content) if reasoning else content
-                return {"success": True, "text": full_text, "latency": latency}
+            if self.is_claude:
+                payload = {
+                    "model": self.model_name,
+                    "max_tokens": 1500,
+                    "messages": [{"role": "user", "content": prompt}],
+                }
+                data = json.dumps(payload).encode("utf-8")
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-api-key": self.api_key,
+                    "anthropic-version": "2023-06-01",
+                }
+                req = urllib.request.Request(self.endpoint_url, data=data, headers=headers)
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    res_json = json.loads(resp.read().decode("utf-8"))
+                    latency = round(time.perf_counter() - t0, 2)
+                    text_parts = []
+                    thinking_parts = []
+                    for block in res_json.get("content", []):
+                        if block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                        elif block.get("type") == "thinking":
+                            thinking_parts.append(block.get("thinking", ""))
+                    if thinking_parts:
+                        full_text = f"<think>\n{''.join(thinking_parts)}\n</think>\n\n" + "\n".join(text_parts)
+                    else:
+                        full_text = "\n".join(text_parts)
+                    return {"success": True, "text": full_text, "latency": latency}
+            else:
+                payload = {
+                    "model": self.model_name,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 1500,
+                    "temperature": 0.1,
+                }
+                data = json.dumps(payload).encode("utf-8")
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["Authorization"] = f"Bearer {self.api_key}"
+
+                req = urllib.request.Request(self.endpoint_url, data=data, headers=headers)
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    res_json = json.loads(resp.read().decode("utf-8"))
+                    latency = round(time.perf_counter() - t0, 2)
+                    choice = res_json.get("choices", [{}])[0]
+                    msg = choice.get("message", {})
+                    content = msg.get("content", "")
+                    reasoning = msg.get("reasoning", "")
+                    full_text = (reasoning + "\n" + content) if reasoning else content
+                    return {"success": True, "text": full_text, "latency": latency}
         except Exception as e:
             return {"success": False, "error": str(e), "latency": round(time.perf_counter() - t0, 2)}
 
@@ -312,6 +360,15 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
 
 
 if __name__ == "__main__":
-    evaluator = DINSBaselineEvaluator()
-    evaluator.evaluate_benchmark(max_cases=50, workers=4)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Wildfire VLM/LLM Baseline Evaluation")
+    parser.add_argument("--model", type=str, default=None, help="Model name (e.g. claude-haiku-5-5, MiniMax-M3)")
+    parser.add_argument("--workers", type=int, default=4, help="Number of concurrent worker threads")
+    parser.add_argument("--max-cases", type=int, default=50, help="Maximum benchmark cases to evaluate")
+    args = parser.parse_args()
+
+    evaluator = DINSBaselineEvaluator(model_name=args.model)
+    evaluator.evaluate_benchmark(max_cases=args.max_cases, workers=args.workers)
+
 
