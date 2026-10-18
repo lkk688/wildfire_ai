@@ -19,10 +19,17 @@ class DINSBaselineEvaluator:
     ):
         self.model_name = model_name or os.environ.get("LLM_MODEL", "MiniMax-M3")
         self.is_claude = self.model_name.lower().startswith("claude")
+        self.is_qwen = "qwen" in self.model_name.lower()
 
         if self.is_claude:
             self.endpoint_url = endpoint_url or "https://api.anthropic.com/v1/messages"
             self.api_key = api_key or self._get_claude_api_key()
+        elif self.is_qwen:
+            default_qwen_url = os.environ.get("TB_REMOTE_QWEN_URL", "http://REMOTE_HOST:28000/v1")
+            if not default_qwen_url.endswith("/chat/completions"):
+                default_qwen_url = default_qwen_url.rstrip("/") + "/chat/completions"
+            self.endpoint_url = endpoint_url or default_qwen_url
+            self.api_key = api_key or os.environ.get("QWEN_REMOTE_KEY", "REDACTED_KEY")
         else:
             self.endpoint_url = endpoint_url or os.environ.get("LLM_ENDPOINT", "https://api.minimaxi.com/v1/chat/completions")
             self.api_key = api_key or os.environ.get("MINIMAX_API_KEY", "")
@@ -124,8 +131,8 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
                     latency = round(time.perf_counter() - t0, 2)
                     choice = res_json.get("choices", [{}])[0]
                     msg = choice.get("message", {})
-                    content = msg.get("content", "")
-                    reasoning = msg.get("reasoning", "")
+                    content = msg.get("content") or ""
+                    reasoning = msg.get("reasoning") or ""
                     full_text = (reasoning + "\n" + content) if reasoning else content
                     return {"success": True, "text": full_text, "latency": latency}
         except Exception as e:
