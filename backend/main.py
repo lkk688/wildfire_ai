@@ -459,11 +459,14 @@ def get_vlm_benchmark_metrics():
 
 
 @app.get("/api/vlm/benchmark/image/{case_id}")
-def get_vlm_benchmark_image(case_id: str):
-    """Serve high-resolution Zoom-18 aerial orthoimagery for benchmark parcel."""
-    img_path = vlm_service.get_image_path(case_id)
+def get_vlm_benchmark_image(
+    case_id: str,
+    epoch: str = Query("prefire", description="Temporal epoch: prefire (2020-02), postfire (2021-10 GT), or current (2024-2026)")
+):
+    """Serve high-resolution Zoom-18 aerial orthoimagery for benchmark parcel by temporal epoch."""
+    img_path = vlm_service.get_image_path(case_id, epoch=epoch)
     if not img_path:
-        raise HTTPException(status_code=404, detail=f"Image for case {case_id} not found")
+        raise HTTPException(status_code=404, detail=f"Image for case {case_id} (epoch={epoch}) not found")
     return FileResponse(str(img_path), media_type="image/jpeg")
 
 

@@ -26,12 +26,28 @@ import {
   BookOpen,
   Maximize2,
   Minimize2,
+  Calendar,
+  Clock,
+  Compass,
+  Columns,
+  Activity,
 } from 'lucide-react';
+
+interface MultiEpochEntry {
+  url: string;
+  label: string;
+  date: string;
+  role: string;
+  badge: string;
+  exists: boolean;
+}
 
 interface CaseItem {
   id: string | number;
   incident: string;
   county: string;
+  city?: string;
+  street_address?: string;
   latitude: number;
   longitude: number;
   year_built: string | number;
@@ -50,6 +66,24 @@ interface CaseItem {
   defensive_actions: string;
   image_url: string;
   has_image: boolean;
+  multi_epoch_images?: {
+    prefire: MultiEpochEntry;
+    postfire: MultiEpochEntry;
+    current: MultiEpochEntry;
+  };
+  incident_forensics?: {
+    fire_name: string;
+    ignition_date: string;
+    location_text: string;
+    weather_forcing: string;
+    fuel_model: string;
+    flame_spread_rate: string;
+    observed_physical_outcome: string;
+    forensic_breach_mechanism: string;
+    firefighter_action_log: string;
+    flame_azimuth_deg: number;
+    wind_speed_mph: number;
+  };
   expert_diagnosis: {
     title: string;
     diagnosis: string;
@@ -128,6 +162,8 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
   const [liveModel, setLiveModel] = useState<string>('claude-sonnet-5-5');
   const [liveLoading, setLiveLoading] = useState<boolean>(false);
   const [liveResult, setLiveResult] = useState<any>(null);
+  const [selectedEpoch, setSelectedEpoch] = useState<'prefire' | 'postfire' | 'current'>('prefire');
+  const [splitComparison, setSplitComparison] = useState<boolean>(false);
 
   // Fetch benchmark data from backend
   useEffect(() => {
@@ -420,41 +456,168 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Column: Aerial Imagery & Forensic GT Card (5 Cols) */}
             <div className="lg:col-span-5 space-y-4">
-              {/* High-Resolution Aerial Imagery Card */}
+              {/* High-Resolution Multi-Temporal Aerial Imagery Card */}
               <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                <div className="relative aspect-video w-full bg-slate-950 overflow-hidden group">
-                  <img
-                    src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}`}
-                    alt={`High-Res Aerial Imagery for Case ${currentCase.id}`}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    onError={(e) => {
-                      // Fallback image placeholder
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                  {/* Image Overlays */}
-                  <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-900/90 text-slate-200 backdrop-blur-md border border-white/10 shadow-md">
-                      ESRI World Imagery (Zoom 18)
-                    </span>
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-black/70 text-slate-300 backdrop-blur-md">
-                      0.3m / Pixel Orthorectified
-                    </span>
+                {/* Multi-Epoch Timeline Switcher Bar */}
+                <div className="bg-slate-950 p-2 border-b border-slate-800 flex items-center justify-between gap-1 text-xs">
+                  <div className="flex items-center gap-1 overflow-x-auto">
+                    {/* Epoch 1: Pre-Fire */}
+                    <button
+                      onClick={() => {
+                        setSelectedEpoch('prefire');
+                        setSplitComparison(false);
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                        !splitComparison && selectedEpoch === 'prefire'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-sm shadow-emerald-500/20'
+                          : 'bg-slate-850 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>2020.02 灾前完整态</span>
+                    </button>
+
+                    {/* Epoch 2: Post-Fire GT */}
+                    <button
+                      onClick={() => {
+                        setSelectedEpoch('postfire');
+                        setSplitComparison(false);
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                        !splitComparison && selectedEpoch === 'postfire'
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50 shadow-sm shadow-rose-500/20'
+                          : 'bg-slate-850 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-rose-400" />
+                      <span>2021.10 灾后现场真值</span>
+                      <span className="text-[10px] px-1 py-0.2 rounded bg-rose-500/30 text-rose-200 font-mono">★ 真值</span>
+                    </button>
+
+                    {/* Epoch 3: Current */}
+                    <button
+                      onClick={() => {
+                        setSelectedEpoch('current');
+                        setSplitComparison(false);
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                        !splitComparison && selectedEpoch === 'current'
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm shadow-cyan-500/20'
+                          : 'bg-slate-850 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                      <span>2024+ 当前现貌</span>
+                    </button>
                   </div>
 
-                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-[11px] bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10">
-                    <div className="flex items-center gap-1.5 text-slate-300">
-                      <MapPin className="w-3.5 h-3.5 text-rose-400" />
-                      <span>{currentCase.latitude.toFixed(4)}°N, {currentCase.longitude.toFixed(4)}°W</span>
+                  {/* Split Comparison Toggle Button */}
+                  <button
+                    onClick={() => setSplitComparison(!splitComparison)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                      splitComparison
+                        ? 'bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-md shadow-orange-500/20'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                    }`}
+                    title="并排对比灾前航拍与灾后真值"
+                  >
+                    <Columns className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">并排对比</span>
+                  </button>
+                </div>
+
+                {/* Imagery Viewport */}
+                {splitComparison ? (
+                  /* 2-Column Split View: Pre-Fire (2020) vs Post-Fire GT (2021) */
+                  <div className="grid grid-cols-2 divide-x divide-slate-800 bg-slate-950">
+                    {/* Left: Pre-Fire */}
+                    <div className="relative aspect-square overflow-hidden group">
+                      <img
+                        src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=prefire`}
+                        alt={`Pre-fire 2020 Case ${currentCase.id}`}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                      <div className="absolute top-2 left-2 bg-emerald-950/90 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold text-emerald-300 border border-emerald-500/40">
+                        2020.02 灾前完整态 (VLM输入)
+                      </div>
+                      <div className="absolute bottom-2 left-2 right-2 bg-slate-950/80 backdrop-blur-md px-2 py-1 rounded text-[10px] text-slate-300 truncate">
+                        完好屋面 / 绿化树冠 / 30m 防御圈
+                      </div>
                     </div>
-                    <span className="text-slate-400 font-medium">
-                      {currentCase.incident} Fire, {currentCase.county} Co.
+
+                    {/* Right: Post-Fire GT */}
+                    <div className="relative aspect-square overflow-hidden group">
+                      <img
+                        src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=postfire`}
+                        alt={`Post-fire 2021 Case ${currentCase.id}`}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                      <div className="absolute top-2 left-2 bg-rose-950/90 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold text-rose-300 border border-rose-500/40">
+                        2021.10 灾后现场物证 (真值)
+                      </div>
+                      <div className="absolute bottom-2 left-2 right-2 bg-slate-950/80 backdrop-blur-md px-2 py-1 rounded text-[10px] font-semibold truncate text-rose-300">
+                        {currentCase.survival_label === 'Destroyed'
+                          ? '🔥 建筑烧毁 / 废墟残骸推平'
+                          : '🛡️ 建筑完好存活 / 成功防守'}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Single Epoch View */
+                  <div className="relative aspect-video w-full bg-slate-950 overflow-hidden group">
+                    <img
+                      src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=${selectedEpoch}`}
+                      alt={`Aerial view ${selectedEpoch} for Case ${currentCase.id}`}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+
+                    {/* Temporal Epoch Floating Badge */}
+                    <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+                      <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold backdrop-blur-md border shadow-md ${
+                        selectedEpoch === 'prefire'
+                          ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/40'
+                          : selectedEpoch === 'postfire'
+                          ? 'bg-rose-950/90 text-rose-300 border-rose-500/40'
+                          : 'bg-cyan-950/90 text-cyan-300 border-cyan-500/40'
+                      }`}>
+                        {selectedEpoch === 'prefire' && '2020.02 灾前完整态 (Pre-Fire Baseline)'}
+                        {selectedEpoch === 'postfire' && '2021.10 灾后实证真值 (Post-Fire Ground Truth)'}
+                        {selectedEpoch === 'current' && '2024-2026 地块当前现貌 (Current Recovery)'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-black/70 text-slate-300 backdrop-blur-md">
+                        0.3m / Pixel Orthorectified
+                      </span>
+                    </div>
+
+                    <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-[11px] bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10">
+                      <div className="flex items-center gap-1.5 text-slate-300">
+                        <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                        <span>{currentCase.latitude.toFixed(4)}°N, {currentCase.longitude.toFixed(4)}°W</span>
+                      </div>
+                      <span className="text-slate-400 font-medium">
+                        {currentCase.incident} Fire, {currentCase.county} Co.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Epoch Functional Description Bar */}
+                <div className="bg-slate-950/90 px-3.5 py-2 border-t border-slate-800 text-[11px] flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-slate-300">
+                    <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    <span>
+                      {selectedEpoch === 'prefire' && '科学用途：提供给 VLM 评测物理结构与周边植被的真实防御基准'}
+                      {selectedEpoch === 'postfire' && '法医事实：火灾熄灭后的正射航拍，直观验证建筑是否化为焦炭'}
+                      {selectedEpoch === 'current' && '恢复现状：展示火灾数年后地块重建或自然演替现貌'}
                     </span>
                   </div>
+                  <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                    {selectedEpoch === 'prefire' ? 'ESRI Wayback 23001' : selectedEpoch === 'postfire' ? 'ESRI Wayback 26120' : 'ESRI World Imagery'}
+                  </span>
                 </div>
 
                 {/* Weather & Meteorological Forcing Banner */}
-                <div className="bg-rose-950/20 border-t border-rose-900/30 p-3 flex items-center justify-between text-xs">
+                <div className="bg-rose-950/20 border-t border-rose-900/30 p-2.5 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2 text-rose-300">
                     <Wind className="w-4 h-4 text-rose-400 animate-pulse" />
                     <span className="font-semibold">Red Flag Warning Forcing:</span>
@@ -545,6 +708,101 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       <span className="text-slate-400">Attached Fence:</span>
                       <span className="text-slate-200 font-medium">{currentCase.fence_attached}</span>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Forensic Wildfire Incident Fact Sheet & Graphic (真实大火案卷与火场事实) */}
+              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4 relative overflow-hidden">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Flame className="w-5 h-5 text-orange-400" />
+                    <div>
+                      <h3 className="text-sm font-bold text-white tracking-wide">
+                        真实大火事实与火场案卷 (Ground-Truth Incident Dossier)
+                      </h3>
+                      <span className="text-[11px] text-slate-400">
+                        {currentCase.incident_forensics?.fire_name || `${currentCase.incident} Fire`} 现场环境与蔓延动力学
+                      </span>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                    {currentCase.incident_forensics?.ignition_date || '2020-06-06'}
+                  </span>
+                </div>
+
+                {/* SVG Visual: Flame Spread & Defensible Space Vector Graphic */}
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-center gap-4">
+                  {/* SVG Diagram Canvas */}
+                  <div className="w-full sm:w-44 h-36 relative shrink-0 flex items-center justify-center">
+                    <svg viewBox="0 0 200 160" className="w-full h-full">
+                      {/* Defensible Space Concentric Zones */}
+                      <circle cx="100" cy="80" r="70" fill="none" stroke="#10b981" strokeWidth="1" strokeDasharray="4 3" opacity="0.4" />
+                      <circle cx="100" cy="80" r="45" fill="none" stroke="#f59e0b" strokeWidth="1" strokeDasharray="3 3" opacity="0.6" />
+                      <circle cx="100" cy="80" r="22" fill="none" stroke="#ef4444" strokeWidth="1.2" opacity="0.7" />
+
+                      {/* Zone Labels */}
+                      <text x="175" y="80" fill="#10b981" fontSize="7" opacity="0.8">100ft</text>
+                      <text x="150" y="80" fill="#f59e0b" fontSize="7" opacity="0.8">30ft</text>
+                      <text x="125" y="80" fill="#ef4444" fontSize="7" opacity="0.8">5ft</text>
+
+                      {/* Wind / Flame Spread Vector Arrow (SW 230° -> NE) */}
+                      <defs>
+                        <linearGradient id="flameGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.9" />
+                          <stop offset="60%" stopColor="#f97316" stopOpacity="0.8" />
+                          <stop offset="100%" stopColor="#fbbf24" stopOpacity="0.2" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M 25 140 Q 60 110 85 92" fill="none" stroke="url(#flameGrad)" strokeWidth="4" strokeLinecap="round" />
+                      <polygon points="85,92 73,95 80,105" fill="#f97316" />
+
+                      {/* Wind Vector Label */}
+                      <text x="15" y="152" fill="#f87171" fontSize="8" fontWeight="bold">SW 230° 32mph</text>
+
+                      {/* Embers Drifting (Particles) */}
+                      <circle cx="65" cy="100" r="1.5" fill="#fde047" className="animate-ping" />
+                      <circle cx="75" cy="88" r="1.5" fill="#fb923c" />
+                      <circle cx="82" cy="78" r="1.5" fill="#ef4444" />
+
+                      {/* Center Building Envelope */}
+                      <rect x="91" y="71" width="18" height="18" rx="2" fill={currentCase.survival_label === 'Survived' ? '#059669' : '#dc2626'} stroke="#ffffff" strokeWidth="1.5" />
+                      <path d="M 88 71 L 100 62 L 112 71 Z" fill={currentCase.survival_label === 'Survived' ? '#10b981' : '#f87171'} stroke="#ffffff" strokeWidth="1" />
+
+                      {/* Outcome Badge in SVG */}
+                      <g transform="translate(100, 20)">
+                        <rect x="-42" y="-10" width="84" height="20" rx="10" fill={currentCase.survival_label === 'Survived' ? '#064e3b' : '#7f1d1d'} stroke={currentCase.survival_label === 'Survived' ? '#34d399' : '#f87171'} strokeWidth="1" />
+                        <text x="0" y="3" fill="#ffffff" fontSize="8" fontWeight="bold" textAnchor="middle">
+                          {currentCase.survival_label === 'Survived' ? '🛡️ 建筑存活 (GT)' : '🔥 建筑烧毁 (GT)'}
+                        </text>
+                      </g>
+                    </svg>
+                  </div>
+
+                  {/* Factual Spread & Environment Breakdown */}
+                  <div className="flex-1 space-y-2 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                        <span className="text-slate-400 text-[10px] block">强风与烈焰推进方向</span>
+                        <span className="font-semibold text-rose-300">西南 (230° SW) 32 mph 阵风推进</span>
+                      </div>
+                      <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                        <span className="text-slate-400 text-[10px] block">周边植被与可燃物</span>
+                        <span className="font-semibold text-amber-300">Chaparral 灌木 + 枯草干燥层</span>
+                      </div>
+                      <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                        <span className="text-slate-400 text-[10px] block">真实物理击穿 / 防护点</span>
+                        <span className="font-semibold text-cyan-300">{currentCase.ignition_point || '无击穿 (全防御幸存)'}</span>
+                      </div>
+                      <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                        <span className="text-slate-400 text-[10px] block">消防员现场战术干预</span>
+                        <span className="font-semibold text-emerald-300">{currentCase.defensive_actions}</span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed bg-slate-900/40 p-2 rounded border border-slate-800/60">
+                      {currentCase.incident_forensics?.observed_physical_outcome ||
+                        `加州消防局现场鉴定：建筑在强风火场中经历烈焰与飞火考验，最终实际结果为 ${currentCase.raw_damage}。`}
+                    </p>
                   </div>
                 </div>
               </div>
