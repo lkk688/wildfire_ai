@@ -204,6 +204,7 @@ python3 -c "from src.academic_models import AcademicBenchmarkRunner; import json
 
 ## 📚 7. Project Documentation Index
 
+*   🔥 **[CVPR Research Proposal: Verifiable VLM Reasoning (docs/CVPR_WILDFIRE_VLM_REASONING_PROPOSAL.md)](docs/CVPR_WILDFIRE_VLM_REASONING_PROPOSAL.md)**: Research proposal on targeting CVPR with multimodal spatial reasoning, RLVR/GRPO post-training, and CAL FIRE DINS verifiable ground truth.
 *   📘 **[Academic Wildfire Models Benchmark (docs/ACADEMIC_WILDFIRE_MODELS_BENCHMARK.md)](docs/ACADEMIC_WILDFIRE_MODELS_BENCHMARK.md)**: Deep dive into physical Level-Set PDEs, Cellular Automata, Google NDWS benchmark, and research roadmaps.
 *   📓 **[Wildfire Ground-Truth & Benchmark Tutorial (docs/WILDFIRE_GROUND_TRUTH_DATA_TUTORIAL.md)](docs/WILDFIRE_GROUND_TRUTH_DATA_TUTORIAL.md)**: Guide to ground-truth label datasets in `/data/wildfire_benchmark_data/` (WFIGS, CAL FIRE DINS, USGS MTBS, NASA FIRMS, WildfireSpreadTS).
 *   📕 **[Interdisciplinary Survey Report (docs/WILDFIRE_AI_SURVEY_REPORT.md)](docs/WILDFIRE_AI_SURVEY_REPORT.md)**: Comprehensive survey on CS/AI interdisciplinary research, causal inference, and WUI computer vision.
