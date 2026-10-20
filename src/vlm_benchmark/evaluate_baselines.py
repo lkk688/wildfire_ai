@@ -29,7 +29,7 @@ class DINSBaselineEvaluator:
             if not default_qwen_url.endswith("/chat/completions"):
                 default_qwen_url = default_qwen_url.rstrip("/") + "/chat/completions"
             self.endpoint_url = endpoint_url or default_qwen_url
-            self.api_key = api_key or os.environ.get("QWEN_REMOTE_KEY", "REDACTED_KEY")
+            self.api_key = api_key or os.environ.get("QWEN_REMOTE_KEY", "")
         else:
             self.endpoint_url = endpoint_url or os.environ.get("LLM_ENDPOINT", "https://api.minimaxi.com/v1/chat/completions")
             self.api_key = api_key or os.environ.get("MINIMAX_API_KEY", "")

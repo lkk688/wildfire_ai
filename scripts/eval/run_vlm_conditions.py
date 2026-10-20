@@ -138,7 +138,7 @@ class Client:
         elif "qwen" in model.lower():
             base = endpoint or os.environ.get("TB_REMOTE_QWEN_URL", "http://REMOTE_HOST:28000/v1")
             self.url = base if base.endswith("/chat/completions") else base.rstrip("/") + "/chat/completions"
-            self.key = api_key or os.environ.get("QWEN_REMOTE_KEY", "REDACTED_KEY")
+            self.key = api_key or os.environ.get("QWEN_REMOTE_KEY", "")
         else:
             self.url = endpoint or os.environ.get("LLM_ENDPOINT", "https://api.minimaxi.com/v1/chat/completions")
             self.key = api_key or os.environ.get("MINIMAX_API_KEY", "")
