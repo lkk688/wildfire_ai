@@ -101,6 +101,18 @@ Implications for next steps:
 3. The research question "what can be reliably determined from pre-fire imagery" is supported. The visual signal
    exists but is weak at 0.3–0.6 m resolution, so Exp #1 (human determinability) is now the critical path.
 
+## 4b. VLM role study (2026-10-20) — see `docs/VLM_ROLE_AND_BASELINE_DESIGN.md`
+
+| Finding | Evidence |
+|---|---|
+| Building-level ceiling is low: clean inspector attributes reach only 0.62–0.65 near-neighbour pair accuracy (0.89 with missingness leakage) | `output/experiments/exposure_control.md` |
+| Perception is adequate: post-fire positive control AUROC Sonnet 0.959, Haiku 0.924, Qwen 0.846 | `vlm_conditions/postfire_*` |
+| Frozen DINOv2/SigLIP + LR beats every VLM direct judgment (0.67–0.71 vs 0.52–0.61) but is at chance on pairs (0.52–0.56): it captures location/exposure, not building vulnerability | `embedding_baseline/` |
+| Pairwise (exposure-controlled): Sonnet 0.620, MiniMax 0.605, Qwen 0.589, Haiku 0.571 vs tabular metadata 0.604; Sonnet image − meta +0.039 [+0.004, +0.085] | `vlm_pairs/`, `pairs_reference.md` |
+| Qwen ignores the image in direct judgment (image − mismatched −0.004) | `vlm_conditions/pilot_qwen38_diag` |
+| VLM-as-sensor (Qwen extraction → LR head) fails: pairs 0.523; fine-grained attributes not rotation-stable | `vlm_extraction/extract_qwen38/analysis.md` |
+| DINS points are not a valid spacing reference; Overture 2026 is post-fire | design doc §4 |
+
 ## 5. Rules going forward
 
 1. The 50 legacy cases and their 10 events are **dev only**. Never report them as test results.
