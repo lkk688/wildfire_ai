@@ -1,0 +1,113 @@
+# Evidence Status Ledger
+
+Last updated: 2026-10-19 (response to Review 1019). This file is the single source of truth for what the
+project has *shown*, and it supersedes conflicting numbers in the README, the CVPR proposal and the internal
+progress reports.
+
+Evidence levels: **Empirical** (held-out, reproducible from logged artefacts) · **Dev-set** (real run, but on
+the 50 cases used to build rules/targets) · **Demo** (UI or mechanism illustration, partly templated from labels)
+· **Simulation** (no model trained or run) · **Planned**.
+
+## 1. Claims ledger
+
+| Claim in earlier docs | Level | What is actually true | Where |
+|---|---|---|---|
+| Web platform, case browser, live model calls, reward-audit UI | Engineering asset | Works; keep | `frontend/`, `backend/` |
+| "Frontier VLMs fail at vision" on 50 cases (~88–100% false alarms) | Dev-set, **text-only** | Evaluator sends DINS post-fire attributes + one fixed Red Flag sentence; no image attached. FPR on survived homes: MiniMax-M3 88%, Haiku 88%, Sonnet 80%, Qwen 100% | `src/vlm_benchmark/evaluate_baselines.py` |
+| "50 survived / destroyed single-family homes" | Dev-set | 44 SFR + 6 mobile homes; "Destroyed" = 24 Destroyed + 1 Major; "Survived" = 17 No Damage + 6 Affected + 2 Minor; 28/50 from Quail | `benchmark_results/dins_vlm_benchmark_50.json` |
+| Ignition-locus attribution as a main task | Not supported | Specific ignition label on 0.32% of destroyed and 5.9% of survived residential DINS records | `output/data_inventory/dins_inventory.md` |
+| GRPO "real training" / `trained_steps` | **Simulation** | No model loaded, no generation, no backward pass; fixed log-probs. Reward/loss wiring check only | `src/vlm_benchmark/qwen_training_pipeline.py` |
+| SFT 82% / RLVR 94% | **Simulation** | Preset simulated policies | `src/vlm_benchmark/rlvr_post_training_runner.py` |
+| Assimilated physics: accuracy up, time-of-ignition MAE 18.0 → 6.7 min | **Demo (synthetic)** | Default physics = constant `True`; "vanilla VLM" built from case id + true label; ToA set from true/predicted class; no per-case PDE/CA integration | `src/academic_models/benchmark_suite.py` (now returns `evidence_status: mechanism_demo_synthetic`) |
+| Structured assessment, Zone 0 status, Bellwether probabilities per case | **Demo (label-conditioned)** | Templated from the true outcome. Never use as inputs/features | `src/vlm_benchmark/service.py` (`label_conditioned_demo_fields`) |
+| "Verifiable physical reward" | Not reliable | 10/10 adversarial probes fail (negation, unknown labels, keyword spam, absolute-immunity physics) | `output/audits/reward_reliability_audit.json` |
+| 100K multimodal research dataset | Planned | 132,522 DINS records downloaded; 90,005 residential with binary label; usable *paired, time-valid* subset still being measured | `output/data_inventory/` |
+| "Pre-fire" imagery (WB_2020_R01) | Unverified for dev set | Release date ≠ capture date (e.g. a Quail case: release 2020-05, capture 2018-08-12). Old builder silently fell back to *current* imagery on tile errors (removed) | `src/vlm_benchmark/imagery_provenance.py` |
+| Literature: DisasterM3 "NeurIPS 2024", FIRE-VLM venue/numbers | Incorrect | DisasterM3 is NeurIPS 2025 D&B; FIRE-VLM is a 2026 preprint (arXiv 2601.03449) | Review 1019 §4 |
+
+## 2. New infrastructure (Weeks 1–2)
+
+| Deliverable | Status | Artefact |
+|---|---|---|
+| Full paginated DINS download with page hashes | Done | `scripts/data/fetch_dins_full.py` → `/data/.../calfire_dins/full/` |
+| Data-quality inventory (events, years, missingness-vs-outcome leakage, ignition-label coverage) | Done | `scripts/data/dins_inventory.py` → `output/data_inventory/` |
+| Time-verified imagery: latest Wayback release before fire, per-location capture date, no fallback, SHA256 | Done | `src/vlm_benchmark/imagery_provenance.py` |
+| Event-level splits; 50 legacy cases' 10 events quarantined as **dev**; forward-in-time test (2024+); 100 m spatial near-duplicate control | Done | `scripts/data/build_research_splits.py` → `output/splits/` |
+| Pilot test set: 8 held-out events, balanced diagnostic (238) + natural-ratio (158) buildings, 396/400 imagery accepted | Done | `output/splits/pilot_test.jsonl`, `pilot_test_summary.md` |
+| Controlled VLM harness (image actually attached; image / mismatched image / metadata / inspector × neutral / extreme prompt; full request+response logging, reported model id, image hash) | Done | `scripts/eval/run_vlm_conditions.py`, `scripts/eval/vlm_metrics.py` |
+| Explicit metric names: FPR = FP/(FP+TN) vs false-alarm ratio = FP/(TP+FP); fire-event cluster-bootstrap CIs | Done | `scripts/eval/vlm_metrics.py`; legacy keys annotated |
+
+## 3. Decisive experiments (Review 1019 §6)
+
+| # | Experiment | Status | Result so far |
+|---|---|---|---|
+| 1 | Human determinability (expert labels from pre-fire inputs only, outcome hidden) | **Needs people** | Annotation protocol to draft; pilot images and attribute keys ready |
+| 2 | Visual increment (meta vs image vs mismatched image) | Pilot run (Haiku) | Small, borderline: ΔAUROC +0.06 vs mismatched image (neutral prompt); vanishes under extreme prompt. §4 |
+| 3 | Prompt bias (neutral vs fixed extreme weather) | Pilot run (Haiku) | Fixed Red Flag sentence: FPR +16 pts, AUROC down. Real event weather not yet built. §4 |
+| 4 | Ground-truth attribute ceiling (leave-event-out) | Done | Clean observed-attribute subset: AUROC ≈ 0.71–0.72 (within-event 0.74–0.76); with "Unknown" as a category: 0.89–0.91, largely missingness leakage. `output/experiments/gt_attribute_ceiling.md` |
+| 5 | Reward / evidence reliability | Probe audit done | 10/10 probes fail → do not optimise this reward. `output/audits/` |
+
+### Simple baselines on the pilot test set (trained on 2019–2023 events)
+
+From `output/experiments/tabular_baselines_pilot.md` (AUROC, 95% event-bootstrap CI):
+
+| Features | Diagnostic (n=238) | Natural ratio (n=158) |
+|---|---|---|
+| Pre-fire metadata (type, year built, value), HGB | 0.625 [0.535, 0.724] | 0.553 [0.484, 0.645] |
+| + post-fire inspector attributes (leaky oracle), logreg | 0.832 [0.732, 0.909] | 0.906 [0.849, 0.962] |
+
+## 4. Pilot results: Exp #2 / #3
+
+Model `claude-haiku-5-5` (API-reported id logged per call), 238-building balanced diagnostic set from 8 held-out
+2024–2025 events, time-verified imagery, prompt `v1-2026-10-19`, API-default sampling (Claude models reject
+`temperature`), one run. Parse failures 0–1.7% per condition after a max_tokens retry. Full table, per-event
+results and every raw request/response: `output/experiments/vlm_conditions/pilot_haiku_diag/`.
+
+| Evidence | Context | AUROC [95% CI] | FPR [95% CI] | mean p(D): Surv / Destr |
+|---|---|---|---|---|
+| meta | neutral | 0.519 [0.459, 0.591] | 46.6% [22.0, 71.7] | 0.477 / 0.489 |
+| meta | extreme | 0.482 [0.402, 0.563] | 62.7% [44.9, 79.2] | 0.537 / 0.535 |
+| image | neutral | 0.606 [0.544, 0.672] | 58.1% [39.8, 76.1] | 0.502 / 0.538 |
+| image | extreme | 0.524 [0.420, 0.611] | 74.4% [61.0, 87.4] | 0.540 / 0.548 |
+| image_mismatch | neutral | 0.543 [0.502, 0.592] | 61.0% [50.8, 71.9] | 0.513 / 0.527 |
+| image_mismatch | extreme | 0.489 [0.394, 0.586] | 75.2% [60.3, 86.3] | 0.550 / 0.552 |
+| inspector (leaky) | neutral | **0.395** [0.303, 0.476] | 66.9% [48.3, 82.5] | 0.524 / 0.454 |
+
+Paired contrasts (same buildings, event-bootstrap 95% CI):
+
+- **Visual increment (Exp #2):** under the neutral prompt, image − mismatched image ΔAUROC = +0.063 [+0.002, +0.130]
+  and image − metadata ΔAUROC = +0.087 [+0.030, +0.143]. The increment is small and borderline. Under the extreme
+  prompt it is not distinguishable from zero (+0.025 [−0.078, +0.139]).
+- **Prompt bias (Exp #3):** adding the fixed Red Flag sentence raises FPR by +16 points in every evidence condition
+  (meta +0.161 [+0.067, +0.250]; image +0.162 [+0.068, +0.244]). It lowers AUROC (image −0.083 [−0.157, −0.018]).
+  So a large share of the legacy "Everything Burns" false-alarm rate comes from the experimental setup, not from
+  the model's visual perception.
+- **Attributes read by an LLM vs. a fitted model:** given the same post-fire inspector attributes, Haiku ranks
+  *worse than chance* (AUROC 0.395). Logistic regression trained on 2019–2023 events reaches 0.832 on the same
+  buildings. A likely explanation, still to be tested: the LLM applies a "combustible features → loss" prior,
+  while DINS recording patterns run the other way (attributes of destroyed homes are more often Unknown, and
+  survivors have their combustible features recorded). This alone can explain much of the legacy text-only result.
+- **Absolute level:** the best Haiku condition (image, neutral: 0.606) is on par with a tabular model on pre-fire
+  metadata (0.625 [0.535, 0.724]). No zero-shot VLM condition approaches the leaky-attribute ceiling.
+
+Limits: one small model, one sampling run (run-to-run variance not yet measured), 8 events, balanced set only
+(natural-ratio set not yet run), no real event weather yet.
+
+Implications for next steps:
+1. Neutral prompting is the default. A real per-event weather condition (RAWS/HRRR at fire start) replaces the fixed
+   extreme sentence.
+2. Before any training, repeat on ≥2 more models (Sonnet, Qwen if its endpoint accepts images) and on the natural set,
+   with 2–3 repeats to estimate run variance.
+3. The research question "what can be reliably determined from pre-fire imagery" is supported. The visual signal
+   exists but is weak at 0.3–0.6 m resolution, so Exp #1 (human determinability) is now the critical path.
+
+## 5. Rules going forward
+
+1. The 50 legacy cases and their 10 events are **dev only**. Never report them as test results.
+2. Model inputs may use only `inputs.prefire` and imagery with `imagery.accepted == true`. DINS inspector
+   attributes are post-fire; use them only in explicitly labelled oracle/ceiling conditions.
+3. Every reported number must point to a logged artefact (raw requests/responses, image hashes, reported model id).
+4. Report FPR and false-alarm ratio by those names; report per-event results and event-cluster intervals.
+5. Ignition-location accuracy only on records with a specific label, with coverage reported; Unknown ≠ negative.
+6. No RL until (a) the reward passes the probe audit and agrees with independent expert scoring, and
+   (b) SFT / constrained decoding leave a stable, verifiable error that RL is compared against at equal compute.

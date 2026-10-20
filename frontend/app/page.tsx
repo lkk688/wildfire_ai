@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Map, Eye, Sparkles } from 'lucide-react';
 import Sidebar from './components/Sidebar';
@@ -24,6 +24,16 @@ const MapView = dynamic(() => import('./components/MapView'), {
 
 export default function Home() {
   const [appMode, setAppMode] = useState<'map' | 'vision'>('map');
+
+  // Automatically activate vision mode if URL specifies ?mode=vision or ?case=...
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('mode') === 'vision' || params.get('case')) {
+        setAppMode('vision');
+      }
+    }
+  }, []);
   const [activeLayer, setActiveLayer] = useState<'1yr' | '5yr' | 'none'>('1yr');
   const [selectedRegion, setSelectedRegion] = useState<string>('san_bruno');
   const [showSentinel, setShowSentinel] = useState<boolean>(true);

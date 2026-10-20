@@ -22,7 +22,7 @@ OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 def run_stac_demo():
     print("=" * 70)
-    print("🛰️ MICROSOFT PLANETARY COMPUTER STAC DEMO - SENTINEL-2")
+    print("[SAT] MICROSOFT PLANETARY COMPUTER STAC DEMO - SENTINEL-2")
     print("=" * 70)
 
     # 1. Connect to STAC API
@@ -49,7 +49,7 @@ def run_stac_demo():
     print(f"         Found {len(items)} matching scenes.")
 
     if not items:
-        print("⚠️ No scenes found in exact date range, searching broader range...")
+        print("[WARN] No scenes found in exact date range, searching broader range...")
         search = catalog.search(
             collections=["sentinel-2-l2a"],
             bbox=SAN_BRUNO_BBOX,
@@ -61,9 +61,9 @@ def run_stac_demo():
 
     best_item = items[0]
     print(f"\n[Step 3] Selected Best Target Scene:")
-    print(f"         • Scene ID: {best_item.id}")
-    print(f"         • Date:     {best_item.datetime.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    print(f"         • Cloud %:  {best_item.properties.get('eo:cloud_cover', 0):.2f}%")
+    print(f"         * Scene ID: {best_item.id}")
+    print(f"         * Date:     {best_item.datetime.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    print(f"         * Cloud %:  {best_item.properties.get('eo:cloud_cover', 0):.2f}%")
 
     # Available assets
     print(f"\n[Step 4] Available Downloadable Bands & Assets:")
@@ -71,7 +71,7 @@ def run_stac_demo():
     for b in band_keys:
         key = b.split()[0]
         if key in best_item.assets:
-            print(f"         ✓ {b:<15} : {best_item.assets[key].title}")
+            print(f"         [OK] {b:<15} : {best_item.assets[key].title}")
 
     # 3. Stream & Crop Bands directly in memory (COG Streaming with crs='EPSG:4326')
     print("\n[Step 5] Streaming & Cropping B04 (Red), B08 (NIR), and B11 (SWIR) for San Bruno...")
@@ -94,7 +94,7 @@ def run_stac_demo():
     denom_ndvi[denom_ndvi == 0] = np.nan
     ndvi_array = (nir - red) / denom_ndvi
 
-    print(f"         • NDVI Range : Min={np.nanmin(ndvi_array):.3f}, Max={np.nanmax(ndvi_array):.3f}, Mean={np.nanmean(ndvi_array):.3f}")
+    print(f"         * NDVI Range : Min={np.nanmin(ndvi_array):.3f}, Max={np.nanmax(ndvi_array):.3f}, Mean={np.nanmean(ndvi_array):.3f}")
 
     # 5. Save Outputs
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -104,7 +104,7 @@ def run_stac_demo():
     ndvi_tif_path = OUTPUT_DIR / "san_bruno_ndvi.tif"
     da_ndvi.rio.to_raster(ndvi_tif_path)
     print(f"\n[Step 7] Saved Local Output Files:")
-    print(f"         • GeoTIFF Raster : {ndvi_tif_path}")
+    print(f"         * GeoTIFF Raster : {ndvi_tif_path}")
 
     # Generate Visualization Figure (PNG Plot)
     plt.figure(figsize=(8, 6))
@@ -118,7 +118,7 @@ def run_stac_demo():
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
-    print(f"         • Preview Image  : {plot_path}")
+    print(f"         * Preview Image  : {plot_path}")
 
     print("\n" + "=" * 70)
     print("✅ STAC DEMO COMPLETED SUCCESSFULLY!")

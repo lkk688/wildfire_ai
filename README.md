@@ -47,7 +47,7 @@ This platform is engineered from the ground up to serve two critical stakeholder
 
 ### 1. WildfireReason-VLM: Forensic Ignition Attribution & Defect Discovery Workstation
 
-A dedicated, peer-review-grade Vision-Language Model (VLM) benchmark and physical causality inspection workstation. It benchmarks leading frontier models against real-world post-fire structural damage inspections from the **CAL FIRE Damage Inspection Specialist (DINS)** database paired with **sub-meter ESRI World Imagery (Zoom 18)**:
+A Vision-Language Model (VLM) inspection workstation and benchmark prototype (engineering demo; see [docs/EVIDENCE_STATUS.md](docs/EVIDENCE_STATUS.md) for which results are empirical). It benchmarks leading frontier models against real-world post-fire structural damage inspections from the **CAL FIRE Damage Inspection Specialist (DINS)** database paired with **sub-meter ESRI World Imagery (Zoom 18)**:
 
 [![Watch VLM Fire Vision Demo](docs/assets/vlm_fire_vision_workstation.png)](docs/assets/vlm_fire_vision_demo.webp)
 > 📹 **Live Demonstration Animation**: Click image above or view [Full Session Recording (WebP)](docs/assets/vlm_fire_vision_demo.webp) demonstrating bidirectional mode switching, 50-case browsing, collapsible CoT reasoning traces, expert forensic defect analysis, and live multi-model execution.
@@ -55,11 +55,14 @@ A dedicated, peer-review-grade Vision-Language Model (VLM) benchmark and physica
 ![Expert Fire Forensic Defect Analysis](docs/assets/vlm_fire_defect_analysis.png)
 
 *   **Bidirectional Application Switcher**: Instant 1-click global toggle between the **🗺️ 3D Risk GIS Map** and the **👁️ VLM Fire Vision & Reasoning Benchmark**.
-*   **Empirical 4-Model Benchmark Scoreboard**:
-    *   **MiniMax-M3 (Commercial CoT)**: 50.00% Accuracy, 92.0% False Alarm Rate, 17.4% Locus Attribution Accuracy.
-    *   **Claude Haiku 5.5 (`claude-haiku-5-5`)**: 50.00% Accuracy, 88.0% False Alarm Rate, 4.5% Locus Attribution Accuracy.
-    *   **Claude Sonnet 5.5 (`claude-sonnet-5-5`)**: 50.00% Accuracy, 88.0% False Alarm Rate, 18.2% Locus Attribution Accuracy.
-    *   **Qwen3.8-27B (Remote vLLM)**: 48.00% Accuracy, 100.0% False Alarm Rate (0 survived homes detected), 12.5% Locus Attribution Accuracy.
+*   **Development-set text baseline (not a vision benchmark)** — see [docs/EVIDENCE_STATUS.md](docs/EVIDENCE_STATUS.md):
+    The legacy evaluator sends **text only** (DINS post-fire inspector attributes + one fixed Red Flag sentence; no image), on 50 development cases (28 from Quail; 24 Destroyed + 1 Major vs 17 No Damage + 6 Affected + 2 Minor). Values from `benchmark_results/baseline_evaluation_*.json` (2026-10-18); FPR = FP/(FP+TN) on survived homes:
+    *   **MiniMax-M3**: 54% accuracy, 88% FPR.
+    *   **Claude Haiku 5.5 (`claude-haiku-5-5`)**: 46% accuracy, 88% FPR.
+    *   **Claude Sonnet 5.5 (`claude-sonnet-5-5`)**: 46% accuracy, 80% FPR.
+    *   **Qwen3.8-27B (Remote vLLM)**: 50% accuracy, 100% FPR.
+    *   Locus (ignition-location) accuracy is not reported: only 2 destroyed dev cases have a specific ignition label.
+    *   Held-out, image-in-the-loop evaluation: `scripts/eval/run_vlm_conditions.py` on `output/splits/pilot_test.jsonl`.
 *   **Sub-Meter Aerial Imagery & Forensic GT Pairing**:
     *   High-resolution Zoom 18 orthoimagery (0.3m/pixel) capturing parcel geometry, 0–5ft Zone 0 buffers, gravel driveways, and tree overhangs.
     *   Forensic CAL FIRE DINS ground truth: verified damage severity (`No Damage` to `Destroyed`), exact initial ignition point (`WHEREFIRESTARTEDONSTRUCTURE`), and emergency responder suppression actions (`Hand Crew Fuel Break`, `Engine Protection`).

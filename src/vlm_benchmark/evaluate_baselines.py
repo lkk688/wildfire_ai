@@ -310,7 +310,7 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
                         f"[{completed_count:>2}/{len(items)}] Case {res['case_id']}: "
                         f"GT={gt['survival']:<9} | Pred={mo['predicted_survival']:<9} | "
                         f"Vuln={mo['predicted_vulnerability']:<7} | "
-                        f"{'✓ Correct' if is_correct else '✗ Miss'} ({mo['latency_sec']}s)"
+                        f"{'[OK] Correct' if is_correct else '[X] Miss'} ({mo['latency_sec']}s)"
                     )
                 except Exception as exc:
                     print(f"[{completed_count}/{len(items)}] Case {item['id']} generated exception: {exc}")
@@ -326,6 +326,11 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
         eval_summary = {
             "model_tested": self.model_name,
             "benchmark_dataset": "WildfireReason-DINS-50",
+            # Review 1019: this evaluator sends TEXT only (DINS post-fire attributes + one fixed
+            # extreme-weather sentence); no image is attached.  The 50 cases are a dev set.
+            # Controlled image/text/prompt conditions: scripts/eval/run_vlm_conditions.py
+            "input_modality": "text_only",
+            "evidence_status": "dev_set_text_experiment",
             "evaluated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "total_evaluated": total,
             "confusion_matrix": {"TP": tp, "FP": fp, "TN": tn, "FN": fn},
@@ -334,7 +339,10 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
                 "precision_destroyed": precision,
                 "recall_destroyed": recall,
                 "f1_score": f1,
+                # Legacy key; value is FPR = FP/(FP+TN) on survived homes, not a false-alarm ratio.
                 "false_alarm_rate_FP": fp_rate,
+                "fpr_survived": fp_rate,
+                "false_alarm_ratio": round(fp / (tp + fp), 4) if (tp + fp) > 0 else 0.0,
                 "miss_rate_FN": fn_rate,
                 "locus_attribution_accuracy": round(locus_correct / max(tp, 1), 4),
                 "hallucination_rate": round(hallucination_cases / max(total, 1), 4),
@@ -351,16 +359,16 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
         print("\n" + "=" * 60)
         print(f"[*] BASELINE BENCHMARK EVALUATION SUMMARY: {self.model_name}")
         print("=" * 60)
-        print(f"  • Total Evaluated Cases:  {total}")
-        print(f"  • Accuracy:               {accuracy * 100:.2f}%")
-        print(f"  • Precision (Destroyed):  {precision * 100:.2f}%")
-        print(f"  • Recall (Destroyed):     {recall * 100:.2f}%")
-        print(f"  • F1-Score:               {f1:.4f}")
-        print(f"  • Confusion Matrix:       TP={tp}, FP={fp}, TN={tn}, FN={fn}")
-        print(f"  • 'Everything Burns' FP:  {fp}/{tn+fp} ({fp_rate * 100:.1f}%) [False Alarm Rate]")
-        print(f"  • Locus Attribution Acc:  {locus_correct}/{max(tp, 1)} ({eval_summary['metrics']['locus_attribution_accuracy'] * 100:.1f}%)")
-        print(f"  • Feature Hallucination:  {hallucination_cases}/{total} ({eval_summary['metrics']['hallucination_rate'] * 100:.1f}%)")
-        print(f"  • Saved JSON Artifact:    {results_path}")
+        print(f"  * Total Evaluated Cases:  {total}")
+        print(f"  * Accuracy:               {accuracy * 100:.2f}%")
+        print(f"  * Precision (Destroyed):  {precision * 100:.2f}%")
+        print(f"  * Recall (Destroyed):     {recall * 100:.2f}%")
+        print(f"  * F1-Score:               {f1:.4f}")
+        print(f"  * Confusion Matrix:       TP={tp}, FP={fp}, TN={tn}, FN={fn}")
+        print(f"  * 'Everything Burns' FP:  {fp}/{tn+fp} ({fp_rate * 100:.1f}%) [FPR = FP/(FP+TN)]")
+        print(f"  * Locus Attribution Acc:  {locus_correct}/{max(tp, 1)} ({eval_summary['metrics']['locus_attribution_accuracy'] * 100:.1f}%)")
+        print(f"  * Feature Hallucination:  {hallucination_cases}/{total} ({eval_summary['metrics']['hallucination_rate'] * 100:.1f}%)")
+        print(f"  * Saved JSON Artifact:    {results_path}")
         print("=" * 60 + "\n")
 
         return eval_summary

@@ -46,3 +46,11 @@ yarn-error.log*
 
 
 docs/WILDFIRE_AI_SURVEY_REPORT.md
+# Unsloth compiled kernels cache
+unsloth_compiled_cache/
+
+# Blinded annotation answer keys (never distribute)
+output/annotation/*/answer_key.csv
+
+# Generated experiment outputs, splits, audits (kept locally; regenerate from scripts/)
+output/

@@ -54,7 +54,7 @@ def download_wfigs_perimeters(
         f.write(resp.read())
     
     file_size_mb = round(out_file.stat().st_size / (1024 * 1024), 2)
-    print(f"[✓] WFIGS downloaded successfully: {file_size_mb} MB")
+    print(f"[[OK]] WFIGS downloaded successfully: {file_size_mb} MB")
     return out_file
 
 
@@ -80,7 +80,7 @@ def download_calfire_dins(
         f.write(resp.read())
 
     file_size_kb = round(out_file.stat().st_size / 1024, 2)
-    print(f"[✓] CAL FIRE DINS downloaded successfully: {file_size_kb} KB")
+    print(f"[[OK]] CAL FIRE DINS downloaded successfully: {file_size_kb} KB")
     return out_file
 
 
@@ -104,7 +104,7 @@ def download_nasa_firms(
         f.write(resp.read())
 
     file_size_kb = round(out_file.stat().st_size / 1024, 2)
-    print(f"[✓] NASA FIRMS downloaded successfully: {file_size_kb} KB")
+    print(f"[[OK]] NASA FIRMS downloaded successfully: {file_size_kb} KB")
     return out_file
 
 

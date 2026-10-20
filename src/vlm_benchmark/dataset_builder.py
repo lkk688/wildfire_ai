@@ -29,19 +29,19 @@ def latlon_to_pixel(lat: float, lon: float, zoom: int = 18) -> Tuple[float, floa
 
 
 def fetch_tile(release_id: int, zoom: int, tx: int, ty: int) -> Tuple[int, int, Image.Image]:
-    """Fetch single tile from ESRI Wayback historical satellite service."""
+    """Fetch single tile from ESRI Wayback historical satellite service.
+
+    No fallback: the previous fallback to the *current* World Imagery service
+    silently injected post-fire pixels into "pre-fire" inputs (Review 1019).
+    A failed tile now fails the sample.  New datasets should use
+    ``imagery_provenance.fetch_prefire_crop``, which also selects the release
+    per fire date and records the per-location capture date.
+    """
     url = f"https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/{release_id}/{zoom}/{ty}/{tx}"
     headers = {"User-Agent": "WildfireAI-Benchmark/2.0"}
     req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return tx, ty, Image.open(io.BytesIO(resp.read())).convert("RGB")
-    except Exception:
-        # Fallback to current ESRI World Imagery if Wayback tile fails
-        fallback_url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{zoom}/{ty}/{tx}"
-        req_fb = urllib.request.Request(fallback_url, headers=headers)
-        with urllib.request.urlopen(req_fb, timeout=10) as resp:
-            return tx, ty, Image.open(io.BytesIO(resp.read())).convert("RGB")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return tx, ty, Image.open(io.BytesIO(resp.read())).convert("RGB")
 
 
 def download_centered_prefire_image(
@@ -214,7 +214,7 @@ def build_dins_benchmark(
             item["image_path"] = None
             item["image_filename"] = None
 
-    print(f"[✓] Downloaded/Verified {downloaded_count}/{len(benchmark_items)} centered pre-fire residential orthophotos.")
+    print(f"[[OK]] Downloaded/Verified {downloaded_count}/{len(benchmark_items)} centered pre-fire residential orthophotos.")
 
     # Save benchmark catalog
     catalog_path = out_dir / "dins_vlm_benchmark_50.json"
@@ -236,7 +236,7 @@ def build_dins_benchmark(
     with open(catalog_path, "w", encoding="utf-8") as f:
         json.dump(benchmark_catalog, f, indent=2)
 
-    print(f"[✓] Pristine benchmark dataset saved to: {catalog_path}")
+    print(f"[[OK]] Pristine benchmark dataset saved to: {catalog_path}")
     return benchmark_catalog
 
 

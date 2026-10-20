@@ -1,3 +1,5 @@
+> **⚠️ Status note (2026-10-19, Review 1019):** Several results in this document are engineering demos, simulations or text-only dev-set runs, not empirical findings (e.g. SFT/RLVR 82%/94%, GRPO "training", assimilation MAE 18.0→6.7 min, "VLM fails at vision"). The current evidence level of every claim is tracked in `docs/EVIDENCE_STATUS.md` (repo root); that file supersedes conflicting numbers here.
+
 # Targeting CVPR with Wildfire AI: Research Feasibility, Frontier Paradigms, and VLM Reasoning Proposal
 
 **Target Conference:** CVPR (IEEE/CVF Conference on Computer Vision and Pattern Recognition)  

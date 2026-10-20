@@ -49,6 +49,9 @@ class RothermelLevelSetSimulator:
         wind_dir_deg: float,  # Direction wind is blowing TOWARDS (0=North, 90=East, 180=South, 270=West)
         fuel_moisture: float,  # Ratio (e.g. 0.08 for 8%)
         elevation_grid: Optional[np.ndarray] = None,
+        fuel_modifier_grid: Optional[np.ndarray] = None,
+        delta_q_grid: Optional[np.ndarray] = None,
+        wrf_grid: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Compute directional Rate of Spread (ROS) field in meters per minute (m/min).
@@ -68,10 +71,19 @@ class RothermelLevelSetSimulator:
         # Approx: R0 ~ 0.5 to 3.0 m/min for dry chaparral
         r0 = 1.2 * eta_m * (self.fuel_model["depth"] / 3.0)
 
+        # Assimilate VLM spatial fuel modifier and pre-ignition heat addition if provided
+        if fuel_modifier_grid is not None:
+            r0 = r0 * fuel_modifier_grid
+        if delta_q_grid is not None:
+            damp_q = 400.0 / (400.0 + np.maximum(delta_q_grid, 0.0))
+            r0 = r0 * damp_q
+
         # 3. Wind multiplier: phi_w = c * (3.281 * V)^B * (beta/beta_op)^-E
         # Converting wind_speed_ms to mph for standard coefficients: 1 m/s = 2.237 mph
         wind_mph = wind_speed_ms * 2.237
         phi_w = 0.09 * (wind_mph ** 1.35)
+        if wrf_grid is not None:
+            phi_w = phi_w * wrf_grid
 
         # 4. Slope multiplier: phi_s = 5.275 * beta^-0.3 * (tan(theta))^2
         if elevation_grid is not None:
@@ -110,6 +122,9 @@ class RothermelLevelSetSimulator:
         wind_dir_deg: float = 45.0,
         fuel_moisture: float = 0.06,
         elevation_grid: Optional[np.ndarray] = None,
+        fuel_modifier_grid: Optional[np.ndarray] = None,
+        delta_q_grid: Optional[np.ndarray] = None,
+        wrf_grid: Optional[np.ndarray] = None,
     ) -> Dict[str, Any]:
         """
         Solve Level-Set PDE using Godunov upwind scheme.
@@ -128,6 +143,9 @@ class RothermelLevelSetSimulator:
             wind_dir_deg=wind_dir_deg,
             fuel_moisture=fuel_moisture,
             elevation_grid=elevation_grid,
+            fuel_modifier_grid=fuel_modifier_grid,
+            delta_q_grid=delta_q_grid,
+            wrf_grid=wrf_grid,
         )
 
         arrival_time = np.full((self.ny, self.nx), -1.0)

@@ -54,6 +54,9 @@ class CellularAutomataSimulator:
         elevation_grid: Optional[np.ndarray] = None,
         spotting_enabled: bool = True,
         random_seed: Optional[int] = 42,
+        fuel_modifier_grid: Optional[np.ndarray] = None,
+        spotting_prob_grid: Optional[np.ndarray] = None,
+        wick_mask: Optional[np.ndarray] = None,
     ) -> Dict[str, Any]:
         """
         Run the Cellular Automata simulation.
@@ -121,6 +124,12 @@ class CellularAutomataSimulator:
                         # Effective neighbor transition probability
                         p_burn = min(max(p0 * p_w * p_s / dist, 0.0), 0.98)
 
+                        # Assimilate VLM spatial fuel modifier and structural wick multiplier
+                        if fuel_modifier_grid is not None:
+                            p_burn = min(p_burn * fuel_modifier_grid[ny, nx], 0.99)
+                        if wick_mask is not None and wick_mask[ny, nx]:
+                            p_burn = min(p_burn * 2.4, 0.99)
+
                         if np.random.rand() < p_burn:
                             new_ignitions.add((ny, nx))
 
@@ -140,8 +149,11 @@ class CellularAutomataSimulator:
                         ey = int(sy - jump_dist_cells * np.cos(flight_rad))
                         ex = int(sx + jump_dist_cells * np.sin(flight_rad))
                         if 0 <= ey < self.ny and 0 <= ex < self.nx and state[ey, ex] == 0:
-                            # Ember ignition probability
-                            p_spot_ignite = max(0.40 * (1.0 - 3.0 * fuel_moisture), 0.05)
+                            # Ember ignition probability assimilated from VLM vent/eave capture grid
+                            if spotting_prob_grid is not None:
+                                p_spot_ignite = spotting_prob_grid[ey, ex]
+                            else:
+                                p_spot_ignite = max(0.40 * (1.0 - 3.0 * fuel_moisture), 0.05)
                             if np.random.rand() < p_spot_ignite:
                                 new_ignitions.add((ey, ex))
 

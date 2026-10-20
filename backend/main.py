@@ -369,6 +369,23 @@ def get_academic_benchmark_results():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/academic/vlm-coupling-benchmark")
+def get_vlm_physics_coupling_benchmark():
+    """
+    Executes and returns the empirical benchmark comparing:
+    1. Default Physics Baseline (Unassimilated)
+    2. Vanilla Frontier VLM (Zero-Shot Direct Output)
+    3. Pure Data-Driven AI (Bellwether / NDWS Proxy)
+    4. Proposed VLM-Assimilated Physics (Rothermel PDE + CA)
+    across the 50 CAL FIRE DINS ground-truth parcels.
+    """
+    try:
+        results = AcademicBenchmarkRunner.evaluate_vlm_physics_coupling()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/academic/simulate")
 def run_academic_simulation(req: AcademicSimulationRequest):
     """
@@ -413,6 +430,12 @@ vlm_service = VLMBenchmarkService()
 
 class VLMPredictRequest(BaseModel):
     model: str = "MiniMax-M3"
+    case_id: Optional[str] = None
+    custom_attributes: Optional[Dict[str, Any]] = None
+
+
+class EvaluateRewardRequest(BaseModel):
+    candidate_text: str
     case_id: Optional[str] = None
     custom_attributes: Optional[Dict[str, Any]] = None
 
@@ -467,7 +490,11 @@ def get_vlm_benchmark_image(
     img_path = vlm_service.get_image_path(case_id, epoch=epoch)
     if not img_path:
         raise HTTPException(status_code=404, detail=f"Image for case {case_id} (epoch={epoch}) not found")
-    return FileResponse(str(img_path), media_type="image/jpeg")
+    return FileResponse(
+        str(img_path),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
+    )
 
 
 @app.post("/api/vlm/predict")
@@ -490,6 +517,37 @@ def run_vlm_live_predict(req: VLMPredictRequest):
         return result
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/vlm/rlvr-reasoning-benchmark")
+def get_rlvr_reasoning_benchmark():
+    """Retrieve RLVR / GRPO post-training ablation benchmark across 50 DINS cases."""
+    try:
+        from src.vlm_benchmark.rlvr_post_training_runner import RLVRPostTrainingRunner
+        runner = RLVRPostTrainingRunner()
+        return runner.run_ablation_benchmark()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/vlm/evaluate-reasoning-reward")
+def evaluate_reasoning_reward(req: EvaluateRewardRequest):
+    """Evaluate candidate reasoning trace using verifiable physical reward engine."""
+    try:
+        from src.vlm_benchmark.verifiable_reward_engine import VerifiablePhysicalRewardEngine
+        engine = VerifiablePhysicalRewardEngine()
+        gt = {}
+        attrs = req.custom_attributes or {}
+        if req.case_id:
+            catalog = vlm_service.get_catalog()
+            matching = [it for it in catalog.get("items", []) if str(it["id"]) == str(req.case_id)]
+            if matching:
+                gt = matching[0]
+                attrs = dict(matching[0])
+                attrs.update(req.custom_attributes or {})
+        return engine.compute_reward(req.candidate_text, gt, attrs)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
