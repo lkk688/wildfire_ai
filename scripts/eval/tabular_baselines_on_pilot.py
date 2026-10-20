@@ -9,6 +9,8 @@ Feature sets
   prior           train-set class prior (constant)
   prefire_meta    structure type, year built, log assessed value  (what the VLM
                   "meta" condition sees, minus event/county names)
+  prefire_geom    prefire_meta + layout from DINS points (nearest-structure
+                  distance, structures within 20/50/100 m; output/features/geometry.parquet)
   inspector       + DINS post-fire inspector attributes, 'Unknown' kept as a
                   category (leaky oracle; compare with the VLM "inspector" run)
 
@@ -34,6 +36,8 @@ from scripts.eval.vlm_metrics import _cluster_boot, _fmt, binary_metrics  # noqa
 
 SRC = Path("/data/wildfire_benchmark_data/calfire_dins/full/dins_full.parquet")
 SPLITS = ROOT / "output" / "splits" / "record_splits.parquet"
+GEOM = ROOT / "output" / "features" / "geometry.parquet"
+GEOM_COLS = ["log_nn_dist", "n_20m", "n_50m", "n_100m"]
 PILOT = ROOT / "output" / "splits" / "pilot_test.jsonl"
 OUT = ROOT / "output" / "experiments"
 INSPECTOR = ["ROOFCONSTRUCTION", "EAVES", "VENTSCREEN", "EXTERIORSIDING", "WINDOWPANE",
@@ -70,6 +74,8 @@ def main() -> None:
     df = pd.read_parquet(SRC)
     sp = pd.read_parquet(SPLITS)
     df = prep(df.merge(sp[["GLOBALID", "split", "y", "event"]], on="GLOBALID", how="inner"))
+    df = df.merge(pd.read_parquet(GEOM), on="GLOBALID", how="left")
+    df["log_nn_dist"] = np.log1p(df["nn_dist_m"])
     train = df[df["split"].isin(["train", "val"])]
     pilot = [json.loads(line) for line in PILOT.read_text().splitlines()]
     pilot = [r for r in pilot if r["imagery"]["accepted"]]
@@ -78,14 +84,16 @@ def main() -> None:
 
     num = ["YEARBUILT", "log_value"]
     runs = []
-    for fs, cat in [("prior", None), ("prefire_meta", ["STRUCTURETYPE"]),
-                    ("inspector (leaky oracle)", ["STRUCTURETYPE"] + INSPECTOR)]:
+    for fs, cat, nm in [("prior", None, num), ("prefire_meta", ["STRUCTURETYPE"], num),
+                        ("prefire_meta+geometry", ["STRUCTURETYPE"], num + GEOM_COLS),
+                        ("inspector (leaky oracle)", ["STRUCTURETYPE"] + INSPECTOR, num),
+                        ("inspector+geometry (leaky oracle)", ["STRUCTURETYPE"] + INSPECTOR, num + GEOM_COLS)]:
         for kind in (["prior"] if cat is None else ["logreg", "hgb"]):
             if kind == "prior":
                 p_all = np.full(len(test), train["y"].mean())
             else:
-                m = model(kind, cat, num).fit(train[cat + num], train["y"])
-                p_all = m.predict_proba(test[cat + num])[:, 1]
+                m = model(kind, cat, nm).fit(train[cat + nm], train["y"])
+                p_all = m.predict_proba(test[cat + nm])[:, 1]
             for ps in ("diagnostic", "natural"):
                 sel = (test["pilot_set"] == ps).values
                 y, p, ev = test.loc[sel, "y"].values, p_all[sel], test.loc[sel, "event"].values

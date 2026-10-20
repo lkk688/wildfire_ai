@@ -157,13 +157,13 @@ def sample_pilot(df: pd.DataFrame, ev: pd.DataFrame, k_bal: int, k_nat: int) -> 
     return pd.concat(rows).reset_index(drop=True)
 
 
-def to_record(r: pd.Series, prov: dict) -> dict:
+def to_record(r: pd.Series, prov: dict, split: str = "test") -> dict:
     ign = _clean(r["WHEREFIRESTARTEDONSTRUCTURE"])
     ign_specific = ign if ign and ign.lower() not in NONSPECIFIC_IGNITION else None
     yb = _num(r["YEARBUILT"])
     return {
         "global_id": r["GLOBALID"], "objectid": int(r["OBJECTID"]),
-        "event": r["event"], "split": "test", "pilot_set": r["pilot_set"],
+        "event": r["event"], "split": split, "pilot_set": r["pilot_set"],
         "inputs": {
             "prefire": {
                 "structure_type": _clean(r["STRUCTURETYPE"]),
@@ -181,7 +181,7 @@ def to_record(r: pd.Series, prov: dict) -> dict:
             "defensive_actions": _clean(r["DEFENSIVEACTIONS"]),
         },
         "imagery": prov,
-        "near_other_split_m": None if np.isnan(r["dist_other_m"]) else round(float(r["dist_other_m"]), 1),
+        "near_other_split_m": None if pd.isna(r.get("dist_other_m")) else round(float(r["dist_other_m"]), 1),
     }
 
 

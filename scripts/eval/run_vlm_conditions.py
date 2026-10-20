@@ -82,6 +82,12 @@ def build_prompt(rec: dict, evidence: str, context: str) -> str:
         lines += ["", "[Imagery]",
                   "- Attached: a pre-fire aerial orthophoto (~0.3-0.6 m/pixel, 512x512 px, about 150 m across). "
                   "The building being assessed is at the exact centre of the image."]
+    if evidence == "postfire_image":
+        days = -int(rec["imagery_postfire"]["staleness_days"])
+        lines += ["", "[Imagery]",
+                  f"- Attached: a POST-fire aerial orthophoto captured {days} days after the fire started "
+                  "(~0.3-0.6 m/pixel, 512x512 px, about 150 m across). The building being assessed is at the "
+                  "exact centre of the image. (Positive control: judge the building's state as shown.)"]
     if evidence == "inspector":
         lines += ["", "[Building attributes]"]
         for k, lab in INSPECTOR_LABELS.items():
@@ -143,13 +149,13 @@ class Client:
             self.url = endpoint or os.environ.get("LLM_ENDPOINT", "https://api.minimaxi.com/v1/chat/completions")
             self.key = api_key or os.environ.get("MINIMAX_API_KEY", "")
 
-    def call(self, prompt: str, image_bytes: bytes = None) -> dict:
+    def call(self, prompt: str, image_bytes=None) -> dict:
+        """image_bytes: None, one JPEG (bytes) or a list of JPEGs (sent in order, before the text)."""
         t0 = time.perf_counter()
+        images = [] if image_bytes is None else ([image_bytes] if isinstance(image_bytes, bytes) else list(image_bytes))
         if self.is_claude:
-            content = []
-            if image_bytes is not None:
-                content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                                            "data": base64.b64encode(image_bytes).decode()}})
+            content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                    "data": base64.b64encode(b).decode()}} for b in images]
             content.append({"type": "text", "text": prompt})
             # Current Claude models reject `temperature`; sampling uses the API default.
             payload = {"model": self.model, "max_tokens": self.max_tokens,
@@ -157,10 +163,10 @@ class Client:
             headers = {"Content-Type": "application/json", "x-api-key": self.key,
                        "anthropic-version": "2023-06-01"}
         else:
-            if image_bytes is not None:
+            if images:
                 content = [{"type": "image_url", "image_url": {
-                    "url": "data:image/jpeg;base64," + base64.b64encode(image_bytes).decode()}},
-                    {"type": "text", "text": prompt}]
+                    "url": "data:image/jpeg;base64," + base64.b64encode(b).decode()}} for b in images]
+                content.append({"type": "text", "text": prompt})
             else:
                 content = prompt
             payload = {"model": self.model, "max_tokens": self.max_tokens, "temperature": 0,
@@ -223,7 +229,7 @@ def main() -> None:
     ap.add_argument("--model", required=True)
     ap.add_argument("--endpoint")
     ap.add_argument("--evidence", nargs="+", default=["meta", "image", "image_mismatch"],
-                    choices=["meta", "image", "image_mismatch", "inspector"])
+                    choices=["meta", "image", "image_mismatch", "inspector", "postfire_image"])
     ap.add_argument("--context", nargs="+", default=["neutral", "extreme"], choices=["neutral", "extreme"])
     ap.add_argument("--pilot-set", default="diagnostic", choices=["diagnostic", "natural", "all"])
     ap.add_argument("--limit", type=int, default=0, help="max buildings (0 = all), taken balanced per event")
@@ -231,6 +237,7 @@ def main() -> None:
     ap.add_argument("--max-tokens", type=int, default=1200, help="raise if replies hit max_tokens")
     ap.add_argument("--run-name", default=None)
     ap.add_argument("--report-only", action="store_true")
+    ap.add_argument("--records", default=str(PILOT))
     args = ap.parse_args()
 
     run = args.run_name or re.sub(r"[^a-z0-9]+", "_", args.model.lower())
@@ -239,7 +246,9 @@ def main() -> None:
     raw_path = out_dir / "raw.jsonl"
 
     if not args.report_only:
-        recs = [json.loads(line) for line in PILOT.read_text().splitlines()]
+        recs = [json.loads(line) for line in Path(args.records).read_text().splitlines()]
+        if "postfire_image" in args.evidence:
+            recs = [r for r in recs if r.get("imagery_postfire", {}).get("accepted")]
         recs = [r for r in recs if r["imagery"]["accepted"]
                 and (args.pilot_set == "all" or r["pilot_set"] == args.pilot_set)]
         if args.limit:
@@ -279,6 +288,9 @@ def main() -> None:
             elif e == "image_mismatch":
                 img_rec = by_id[swap[r["global_id"]]]
             img = Path(img_rec["imagery"]["image_path"]).read_bytes() if img_rec else None
+            if e == "postfire_image":
+                img_rec = r
+                img = Path(r["imagery_postfire"]["image_path"]).read_bytes()
             res = client.call(prompt, img)
             row = {
                 "global_id": r["global_id"], "event": r["event"], "pilot_set": r["pilot_set"],

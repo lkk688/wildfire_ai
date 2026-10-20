@@ -262,3 +262,62 @@ def fetch_prefire_crop(
     prov.image_sha256 = hashlib.sha256(data).hexdigest()
     prov.accepted = True
     return prov
+
+
+def fetch_postfire_crop(
+    lat: float,
+    lon: float,
+    fire_start: dt.date,
+    out_path: Path,
+    releases: List[Release],
+    zoom: int = 18,
+    size: int = 512,
+    max_lag_days: int = 365,
+) -> ImageryProvenance:
+    """Earliest Wayback capture strictly after the fire start (within max_lag_days).
+
+    Used only as a *positive control* (is building state perceivable in these
+    crops at all?), never as a model input for pre-fire risk.
+    """
+    prov = ImageryProvenance(accepted=False, reject_reason=None, fire_start=fire_start.isoformat(),
+                             zoom=zoom, size_px=size)
+    cands = [r for r in releases if fire_start < r.release_date <= fire_start + dt.timedelta(days=max_lag_days + 120)]
+    for rel in cands:
+        try:
+            meta = query_capture_metadata(rel, lat, lon, zoom)
+        except RuntimeError:
+            continue
+        if meta is None or meta["capture_date"] <= fire_start:
+            continue
+        if (meta["capture_date"] - fire_start).days > max_lag_days:
+            break
+        prov.release_id, prov.release_identifier = rel.release_id, rel.identifier
+        prov.release_date = rel.release_date.isoformat()
+        prov.capture_date = meta["capture_date"].isoformat()
+        prov.capture_source, prov.capture_provider = meta["source"], meta["provider"]
+        prov.capture_resolution_m = meta["resolution_m"]
+        prov.staleness_days = (fire_start - meta["capture_date"]).days  # negative: days after fire
+        px, py = latlon_to_pixel(lat, lon, zoom)
+        h = size / 2.0
+        tx0, tx1 = int((px - h) // 256), int((px + h) // 256)
+        ty0, ty1 = int((py - h) // 256), int((py + h) // 256)
+        coords = [(x, y) for x in range(tx0, tx1 + 1) for y in range(ty0, ty1 + 1)]
+        try:
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                tiles = list(ex.map(lambda c: _fetch_tile(rel.release_id, zoom, *c), coords))
+        except RuntimeError as e:
+            prov.reject_reason = f"tile_error:{e}"[:200]
+            return prov
+        canvas = Image.new("RGB", ((tx1 - tx0 + 1) * 256, (ty1 - ty0 + 1) * 256))
+        for (x, y), t in zip(coords, tiles):
+            canvas.paste(t, ((x - tx0) * 256, (y - ty0) * 256))
+        cx, cy = int(round(px - tx0 * 256 - h)), int(round(py - ty0 * 256 - h))
+        buf = io.BytesIO()
+        canvas.crop((cx, cy, cx + size, cy + size)).save(buf, format="JPEG", quality=92)
+        data = buf.getvalue()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(data)
+        prov.image_path, prov.image_sha256, prov.accepted = str(out_path), hashlib.sha256(data).hexdigest(), True
+        return prov
+    prov.reject_reason = "no_postfire_capture_within_lag"
+    return prov
