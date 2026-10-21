@@ -141,9 +141,11 @@ def derangement_map(recs: list) -> dict:
 
 
 class Client:
-    def __init__(self, model: str, endpoint: str = None, api_key: str = None, max_tokens: int = 1200):
+    def __init__(self, model: str, endpoint: str = None, api_key: str = None, max_tokens: int = 1200,
+                 no_think: bool = False):
         self.model = model
         self.max_tokens = max_tokens
+        self.no_think = no_think  # Qwen3.x chat template: enable_thinking=False
         self.is_claude = model.lower().startswith("claude")
         if self.is_claude:
             self.url = endpoint or "https://api.anthropic.com/v1/messages"
@@ -178,6 +180,8 @@ class Client:
                 content = prompt
             payload = {"model": self.model, "max_tokens": self.max_tokens, "temperature": 0,
                        "messages": [{"role": "user", "content": content}]}
+            if self.no_think:
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
             headers = {"Content-Type": "application/json"}
             if self.key:
                 headers["Authorization"] = f"Bearer {self.key}"
@@ -242,6 +246,8 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0, help="max buildings (0 = all), taken balanced per event")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--max-tokens", type=int, default=1200, help="raise if replies hit max_tokens")
+    ap.add_argument("--no-think", action="store_true", help="Qwen3.x: disable thinking via chat template")
+    ap.add_argument("--subset", type=int, default=0, help="fixed seeded subset size (stratified by event x outcome)")
     ap.add_argument("--run-name", default=None)
     ap.add_argument("--report-only", action="store_true")
     ap.add_argument("--records", default=str(PILOT))
@@ -258,6 +264,22 @@ def main() -> None:
             recs = [r for r in recs if r.get("imagery_postfire", {}).get("accepted")]
         recs = [r for r in recs if r["imagery"]["accepted"]
                 and (args.pilot_set == "all" or r["pilot_set"] == args.pilot_set)]
+        if args.subset and len(recs) > args.subset:
+            # fixed seeded stratified subset: same buildings for every model
+            import random
+            rnd = random.Random(SEED)
+            strata = {}
+            for r in sorted(recs, key=lambda r: r["global_id"]):
+                strata.setdefault((r["event"], r["labels"]["outcome"]), []).append(r)
+            for v in strata.values():
+                rnd.shuffle(v)
+            pick, i = [], 0
+            while len(pick) < args.subset:
+                for k in sorted(strata):
+                    if i < len(strata[k]) and len(pick) < args.subset:
+                        pick.append(strata[k][i])
+                i += 1
+            recs = pick
         if args.limit:
             # round-robin over (event, outcome) strata so a small limit stays balanced
             strata = {}
@@ -283,7 +305,7 @@ def main() -> None:
         jobs = [(r, e, c) for r in recs for e in args.evidence for c in args.context
                 if (r["global_id"], e, c) not in done and not (e == "image_mismatch" and r["global_id"] not in swap)]
         print(f"[*] {args.model}: {len(recs)} buildings, {len(jobs)} calls to run ({len(done)} cached)")
-        client = Client(args.model, args.endpoint, max_tokens=args.max_tokens)
+        client = Client(args.model, args.endpoint, max_tokens=args.max_tokens, no_think=args.no_think)
         lock = threading.Lock()
 
         def work(job):
