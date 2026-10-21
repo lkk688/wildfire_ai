@@ -321,3 +321,77 @@ def fetch_postfire_crop(
         return prov
     prov.reject_reason = "no_postfire_capture_within_lag"
     return prov
+
+
+def fetch_postfire_crop_fast(
+    lat: float,
+    lon: float,
+    fire_start: dt.date,
+    out_path: Path,
+    releases: List[Release],
+    zoom: int = 18,
+    size: int = 512,
+    max_lag_days: int = 365,
+) -> ImageryProvenance:
+    """Like fetch_postfire_crop, but binary-searches the releases.
+
+    At a fixed location the served capture date is non-decreasing across
+    releases, so the first release whose capture is after the fire can be found
+    with ~log2(n) metadata queries instead of n.
+    """
+    prov = ImageryProvenance(accepted=False, reject_reason=None, fire_start=fire_start.isoformat(),
+                             zoom=zoom, size_px=size)
+    cands = [r for r in releases if fire_start < r.release_date <= fire_start + dt.timedelta(days=max_lag_days + 120)]
+    cache = {}
+
+    def cap(i):
+        if i not in cache:
+            try:
+                cache[i] = query_capture_metadata(cands[i], lat, lon, zoom)
+            except RuntimeError:
+                cache[i] = None
+        return cache[i]
+
+    lo, hi, found = 0, len(cands) - 1, None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        m = cap(mid)
+        if m is not None and m["capture_date"] > fire_start:
+            found, hi = mid, mid - 1
+        else:
+            lo = mid + 1
+    if found is None:
+        prov.reject_reason = "no_postfire_capture_within_lag"
+        return prov
+    rel, meta = cands[found], cache[found]
+    if (meta["capture_date"] - fire_start).days > max_lag_days:
+        prov.reject_reason = "no_postfire_capture_within_lag"
+        return prov
+    prov.release_id, prov.release_identifier = rel.release_id, rel.identifier
+    prov.release_date = rel.release_date.isoformat()
+    prov.capture_date = meta["capture_date"].isoformat()
+    prov.capture_source, prov.capture_provider = meta["source"], meta["provider"]
+    prov.capture_resolution_m = meta["resolution_m"]
+    prov.staleness_days = (fire_start - meta["capture_date"]).days  # negative: days after the fire
+    px, py = latlon_to_pixel(lat, lon, zoom)
+    h = size / 2.0
+    tx0, tx1 = int((px - h) // 256), int((px + h) // 256)
+    ty0, ty1 = int((py - h) // 256), int((py + h) // 256)
+    coords = [(x, y) for x in range(tx0, tx1 + 1) for y in range(ty0, ty1 + 1)]
+    try:
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            tiles = list(ex.map(lambda c: _fetch_tile(rel.release_id, zoom, *c), coords))
+    except RuntimeError as e:
+        prov.reject_reason = f"tile_error:{e}"[:200]
+        return prov
+    canvas = Image.new("RGB", ((tx1 - tx0 + 1) * 256, (ty1 - ty0 + 1) * 256))
+    for (x, y), t in zip(coords, tiles):
+        canvas.paste(t, ((x - tx0) * 256, (y - ty0) * 256))
+    cx, cy = int(round(px - tx0 * 256 - h)), int(round(py - ty0 * 256 - h))
+    buf = io.BytesIO()
+    canvas.crop((cx, cy, cx + size, cy + size)).save(buf, format="JPEG", quality=92)
+    data = buf.getvalue()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(data)
+    prov.image_path, prov.image_sha256, prov.accepted = str(out_path), hashlib.sha256(data).hexdigest(), True
+    return prov

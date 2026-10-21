@@ -88,6 +88,13 @@ def build_prompt(rec: dict, evidence: str, context: str) -> str:
                   f"- Attached: a POST-fire aerial orthophoto captured {days} days after the fire started "
                   "(~0.3-0.6 m/pixel, 512x512 px, about 150 m across). The building being assessed is at the "
                   "exact centre of the image. (Positive control: judge the building's state as shown.)"]
+    if evidence == "prepost_image":
+        days = -int(rec["imagery_postfire"]["staleness_days"])
+        lines += ["", "[Imagery]",
+                  "- Attached: two aerial orthophotos of the same place (~0.3-0.6 m/pixel, about 150 m across). "
+                  f"Image 1 is PRE-fire (captured {rec['imagery']['capture_date']}); image 2 is POST-fire "
+                  f"(captured {days} days after the fire started). The building being assessed is at the exact "
+                  "centre of both. Compare them."]
     if evidence == "inspector":
         lines += ["", "[Building attributes]"]
         for k, lab in INSPECTOR_LABELS.items():
@@ -229,7 +236,7 @@ def main() -> None:
     ap.add_argument("--model", required=True)
     ap.add_argument("--endpoint")
     ap.add_argument("--evidence", nargs="+", default=["meta", "image", "image_mismatch"],
-                    choices=["meta", "image", "image_mismatch", "inspector", "postfire_image"])
+                    choices=["meta", "image", "image_mismatch", "inspector", "postfire_image", "prepost_image"])
     ap.add_argument("--context", nargs="+", default=["neutral", "extreme"], choices=["neutral", "extreme"])
     ap.add_argument("--pilot-set", default="diagnostic", choices=["diagnostic", "natural", "all"])
     ap.add_argument("--limit", type=int, default=0, help="max buildings (0 = all), taken balanced per event")
@@ -247,7 +254,7 @@ def main() -> None:
 
     if not args.report_only:
         recs = [json.loads(line) for line in Path(args.records).read_text().splitlines()]
-        if "postfire_image" in args.evidence:
+        if {"postfire_image", "prepost_image"} & set(args.evidence):
             recs = [r for r in recs if r.get("imagery_postfire", {}).get("accepted")]
         recs = [r for r in recs if r["imagery"]["accepted"]
                 and (args.pilot_set == "all" or r["pilot_set"] == args.pilot_set)]
@@ -291,6 +298,9 @@ def main() -> None:
             if e == "postfire_image":
                 img_rec = r
                 img = Path(r["imagery_postfire"]["image_path"]).read_bytes()
+            if e == "prepost_image":
+                img_rec = r
+                img = [Path(r["imagery"]["image_path"]).read_bytes(), Path(r["imagery_postfire"]["image_path"]).read_bytes()]
             res = client.call(prompt, img)
             row = {
                 "global_id": r["global_id"], "event": r["event"], "pilot_set": r["pilot_set"],
@@ -299,7 +309,8 @@ def main() -> None:
                 "endpoint": client.url, "prompt_version": PROMPT_VERSION,
                 "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "prompt": prompt,
                 "image_global_id": img_rec["global_id"] if img_rec else None,
-                "image_sha256": hashlib.sha256(img).hexdigest() if img else None,
+                "image_sha256": (hashlib.sha256(img).hexdigest() if isinstance(img, bytes)
+                                 else [hashlib.sha256(b).hexdigest() for b in img]) if img else None,
                 "response_ok": res["ok"], "error": res.get("error"), "raw_text": res.get("text"),
                 "reasoning": res.get("reasoning"), "usage": res.get("usage"),
                 "stop_reason": res.get("stop_reason"), "latency_sec": res.get("latency"),
