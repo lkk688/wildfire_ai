@@ -113,6 +113,42 @@ Implications for next steps:
 | VLM-as-sensor (Qwen extraction → LR head) fails: pairs 0.523; fine-grained attributes not rotation-stable | `vlm_extraction/extract_qwen38/analysis.md` |
 | DINS points are not a valid spacing reference; Overture 2026 is post-fire | design doc §4 |
 
+## 4c. Graded conclusions (revised 2026-10-20 after pre-registered confirmation on untouched val events)
+
+Plan and code were committed before any run: `docs/CONFIRMATORY_PLAN.md` (commit fb92a36); results in
+`output/experiments/confirmatory/results.md`. Deviation: Holm-correction code bug fixed after the first
+run; no analysis rule changed.
+
+**Level 1 — paper-ready (own data, independent lines agree, replicated where tested)**
+
+| Claim | Evidence |
+|---|---|
+| Building state is perceivable in these crops (post-fire control) | Sonnet 0.959 [0.948, 0.970], Haiku 0.924, Qwen 0.846 (106/118 parsed); 118/238 with a capture ≤365 d after the fire |
+| Open models lag in *perception*, not only reasoning | post-fire AUROC: Qwen 0.846 [0.791, 0.917] vs Sonnet 0.959 (CIs do not overlap) |
+| VLM direct judgment uses the image (own vs mismatched) — but its absolute level stays below a frozen-embedding head | Sonnet: test +0.068, **confirmed** on val +0.155 [+0.074, +0.234] (Holm p=0.0015); Qwen val +0.094 [+0.002, +0.177] |
+| DINS attribute *values* carry ~0.63 pair accuracy; ~0.88 comes from missingness | same population: missingness indicators only 0.883, random-imputed values 0.626, clean subset 0.62–0.65 (`missingness_ablation.md`, `exposure_control.md`) |
+| Frozen-image embeddings rank by location more than by building | AUROC 0.665–0.714 (test), 0.672 (val) vs pairs 0.52–0.56 (test), 0.571 (val) |
+| Zero-shot VLM direct judgment does not beat a frozen-embedding linear head | VLMs 0.52–0.61 (test), Sonnet 0.641 (val) vs DINOv2 head 0.665–0.714 (test), 0.672 (val) |
+| VLM-as-sensor fails *for Qwen3.8-27B at 0.3–0.6 m with this schema and 971 training buildings* | rotation agreement 58–66% on fine attributes; head pair acc 0.523 (Sonnet extraction + head untested) |
+| Data-engineering facts | Wayback release date ≠ capture date (median gap 585 d); old builder *had* a silent fallback to current imagery (removed; never verified to have fired); Overture 2026 is post-fire |
+
+**Level 2 — real numbers, interpretation or generality open**
+
+| Claim | Status |
+|---|---|
+| VLM pairwise judgment beats metadata under exposure control | **not supported**: Sonnet test 0.620 / val 0.555 (H2 Holm p=0.053); Qwen test 0.589 / val 0.599; pooled both ≈0.593 vs tabular metadata 0.59–0.60; model ranking flips between event sets |
+| Image adds over metadata in pairs | test +0.039 [+0.004, +0.085]; val +0.024 [−0.038, +0.090] (H1 had 37% power) |
+| ~~Qwen ignores the pre-fire image~~ **not supported** | test −0.004 [−0.069, +0.079] but val +0.094 [+0.002, +0.177]; Qwen val AUROC 0.639 ≈ Sonnet 0.641. The open-model gap is established only for post-fire perception |
+| Haiku reverses direction when reading inspector attributes | test 0.395; **not replicated** on val (0.517). Stable piece: Haiku treats "Unknown" as *lower* risk (corr −0.26 test, −0.35 val); the reversal appears only where missingness strongly tracks loss (corr +0.62 test vs +0.10 val) |
+| Fixed extreme-weather prompt raises FPR (~+16 pp) | Haiku, single run; Qwen direction consistent on 26 cases only |
+| Density rule learned on 2019–23 fires does not transfer to 2024–25 | 0.391, from DINS-point density (itself incomplete), test dominated by Eaton/Palisades — a transfer failure, not a test of LLM common sense |
+| DINS points miss structures | inferred from Sonnet's systematically shorter distances; not checked against footprints |
+| Mechanism of the low ceiling (decisive features invisible from nadir; ember stochasticity; suppression) | hypothesis consistent with data, not tested |
+
+**Level 3 — external literature numbers**: verify each against the original paper before citing (not checked in this session).
+
+**Level 4 — reasoning only, no data**: post-fire SFT closes Qwen's gap; street-level view adds to nadir; calibration/abstention as differentiator; decision-time advice.
+
 ## 5. Rules going forward
 
 1. The 50 legacy cases and their 10 events are **dev only**. Never report them as test results.

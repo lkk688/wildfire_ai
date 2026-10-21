@@ -164,8 +164,8 @@ def main() -> None:
     fam = [k for k in res if k.startswith(("H2 confirm_pairs_sonnet:", "H3 ", "H4a "))]
     ps = sorted((res[k]["p_one_sided"], k) for k in fam)
     for rank, (pv, k) in enumerate(ps):
-        res[k]["p_holm"] = float(min(1.0, max(pv * (len(ps) - rank),
-                                             *(res[kk].get("p_holm", 0) for _, kk in ps[:rank]))))
+        res[k]["p_holm"] = float(min(1.0, max([pv * (len(ps) - rank)]
+                                              + [res[kk]["p_holm"] for _, kk in ps[:rank]])))
     (OUT / "results.json").write_text(json.dumps(res, indent=2, default=float))
     L = ["# Confirmatory results (val events, pre-registered)\n",
          "| Hypothesis | Estimate | 95% CI | p (one-sided) | p Holm | n / notes |", "|---|---:|---|---:|---:|---|"]
