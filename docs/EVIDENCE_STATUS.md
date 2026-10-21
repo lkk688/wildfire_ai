@@ -132,6 +132,9 @@ run; no analysis rule changed.
 | VLM-as-sensor fails *for Qwen3.8-27B at 0.3–0.6 m with this schema and 971 training buildings* | rotation agreement 58–66% on fine attributes; head pair acc 0.523 (Sonnet extraction + head untested) |
 | Data-engineering facts | Wayback release date ≠ capture date (median gap 585 d); old builder *had* a silent fallback to current imagery (removed; never verified to have fired); Overture 2026 is post-fire |
 
+| Post-fire: a 4B open VLM with LoRA SFT on 1,646 train-event buildings beats zero-shot Haiku/Sonnet and a 27B open model on unseen 2024+ fires, **but only ties a frozen DINOv2-base + LR** | SFT 0.892 (full test); vs Haiku post +0.095 [+0.046, +0.147], vs Sonnet post +0.065 [+0.021, +0.106], vs Qwen3.8-27B +0.192; vs frozen LP +0.011 [−0.007, +0.028] (`postfire/comparison.md`, pre-registered in `POSTFIRE_TASK_PLAN.md`) |
+| Readout matters: same 4B base, generated number 0.644 vs first-token probability 0.762 | `postfire/comparison.md` |
+
 **Level 2 — real numbers, interpretation or generality open**
 
 | Claim | Status |

@@ -140,9 +140,13 @@ def main() -> None:
     tr, va, te = load("train"), load("val"), load("test")
     print(f"train {len(tr)} val {len(va)} test {len(te)}; test destroyed rate {ybin(te).mean():.2f}", flush=True)
     res = []
+    preds = {"global_id": [r["global_id"] for r in te]}
     for enc in ["facebook/dinov2-base", "google/siglip-base-patch16-224"]:
-        res.append(report(f"lp_post {enc}", te, linear_probe(enc, tr, va, te, False)))
-        res.append(report(f"lp_prepost {enc}", te, linear_probe(enc, tr, va, te, True)))
+        for tag, pp in (("lp_post", False), ("lp_prepost", True)):
+            p = linear_probe(enc, tr, va, te, pp)
+            preds[f"{tag} {enc}"] = p.tolist()
+            res.append(report(f"{tag} {enc}", te, p))
+    (OUT / "lp_test_preds.json").write_text(json.dumps(preds))
     if not args.skip_ft:
         p, probs, vbest = finetune(tr, va, te)
         res.append(report("ft_post dinov2-small (5-level head)", te, p, {
