@@ -26,7 +26,7 @@ from sklearn.neighbors import BallTree
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from scripts.data.build_research_splits import (  # noqa: E402
-    IMG_DIR, MIN_PER_CLASS_TEST, OUT, SEED, _num, assign_splits, flag_spatial_neighbours,
+    IMG_DIR, MIN_PER_CLASS_TEST, OUT, SEED, _num, assign_splits,
     load_residential, to_record)
 from src.vlm_benchmark.imagery_provenance import fetch_prefire_crop, load_releases  # noqa: E402
 
@@ -43,15 +43,22 @@ def main() -> None:
     ap.add_argument("--exclude", nargs="*", default=[], help="pair files whose buildings must not be reused")
     ap.add_argument("--out", default="pairs_test.jsonl")
     ap.add_argument("--seed-offset", type=int, default=11)
+    ap.add_argument("--split", default="test", choices=["test", "val"])
+    ap.add_argument("--near-m", type=float, default=100.0,
+                    help="drop buildings within this distance of any record from another split")
     args = ap.parse_args()
 
     df = load_residential()
     ev = assign_splits(df)
     df = df.merge(ev[["event", "split"]], on="event")
-    df["dist_other_m"] = flag_spatial_neighbours(df)
-    elig = ev[(ev["split"] == "test") & (ev["destroyed"] >= args.min_per_class) &
+    other = df[df["split"] != args.split]
+    mine = df["split"] == args.split
+    tree_o = BallTree(np.radians(other[["lat", "lon"]].values), metric="haversine")
+    df["dist_other_m"] = np.nan
+    df.loc[mine, "dist_other_m"] = tree_o.query(np.radians(df.loc[mine, ["lat", "lon"]].values), k=1)[0][:, 0] * R_EARTH
+    elig = ev[(ev["split"] == args.split) & (ev["destroyed"] >= args.min_per_class) &
               (ev["survived"] >= args.min_per_class)]["event"]
-    test = df[df["event"].isin(elig) & ~(df["dist_other_m"] < 100)].copy()
+    test = df[df["event"].isin(elig) & ~(df["dist_other_m"] < args.near_m)].copy()
     pilot_ids = {json.loads(line)["global_id"] for line in (OUT / "pilot_test.jsonl").read_text().splitlines()}
     for f in args.exclude:
         for line in (OUT / f).read_text().splitlines():
@@ -91,7 +98,7 @@ def main() -> None:
         prov = fetch_prefire_crop(float(r["lat"]), float(r["lon"]), r["INCIDENTSTARTDATE_ISO"].date(),
                                   IMG_DIR / f"{r['GLOBALID']}.jpg", releases,
                                   year_built=int(yb) if yb and 1800 <= yb <= 2026 else None)
-        return to_record(r, prov.to_dict())
+        return to_record(r, prov.to_dict(), split=args.split)
 
     def work(p):
         e, rd, rs, dm = p
