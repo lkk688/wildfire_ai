@@ -260,6 +260,13 @@ def main() -> None:
             macros[f"ca{m}One"] = f3(c[k]["T1_auroc"])
             macros[f"ca{m}Two"] = f3(c[k]["T2_pair_acc"])
             macros[f"ca{m}Three"] = f3(c[k]["T3_auroc"])
+    ra = EXP / "resolution_ablation.json"
+    if ra.exists():
+        r = json.loads(ra.read_text())
+        macros["resZEighteenOne"] = f3(r["z18_center_75m"]["T1_auroc"])
+        macros["resZNineteenOne"] = f3(r["z19_native_75m"]["T1_auroc"])
+        macros["resZEighteenTwo"] = f3(r["z18_center_75m"]["T2_pair_acc"])
+        macros["resZNineteenTwo"] = f3(r["z19_native_75m"]["T2_pair_acc"])
     qp = EXP / "postfire" / "qwen_vision_probe.json"
     if qp.exists():
         q = json.loads(qp.read_text())
