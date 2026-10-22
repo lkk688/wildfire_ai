@@ -82,6 +82,12 @@ def build_prompt(rec: dict, evidence: str, context: str) -> str:
         lines += ["", "[Imagery]",
                   "- Attached: a pre-fire aerial orthophoto (~0.3-0.6 m/pixel, 512x512 px, about 150 m across). "
                   "The building being assessed is at the exact centre of the image."]
+    if evidence in ("image_masked", "postfire_masked"):
+        when = "pre-fire" if evidence == "image_masked" else "POST-fire"
+        lines += ["", "[Imagery]",
+                  f"- Attached: a {when} aerial orthophoto (~0.3-0.6 m/pixel, 512x512 px, about 150 m across). The "
+                  "building being assessed is at the exact centre, but it and its immediate yard (about 19 m radius) "
+                  "are hidden by a grey disk; only the surroundings are visible."]
     if evidence == "postfire_image":
         days = -int(rec["imagery_postfire"]["staleness_days"])
         lines += ["", "[Imagery]",
@@ -119,6 +125,18 @@ def build_prompt(rec: dict, evidence: str, context: str) -> str:
         "Fill \"attributes\" for every key in attribute_keys_required (omit attribute_keys_required itself).",
     ]
     return "\n".join(lines)
+
+
+def masked_jpeg(path: str, radius_px: int = 64) -> bytes:
+    """Centre building + yard hidden by a grey disk (r = 64 px ~ 19 m at zoom 18)."""
+    import io
+    from PIL import Image, ImageDraw
+    im = Image.open(path).convert("RGB")
+    c = im.size[0] // 2
+    ImageDraw.Draw(im).ellipse((c - radius_px, c - radius_px, c + radius_px, c + radius_px), fill=(128, 128, 128))
+    buf = io.BytesIO()
+    im.save(buf, format="JPEG", quality=92)
+    return buf.getvalue()
 
 
 def derangement_map(recs: list) -> dict:
@@ -240,7 +258,8 @@ def main() -> None:
     ap.add_argument("--model", required=True)
     ap.add_argument("--endpoint")
     ap.add_argument("--evidence", nargs="+", default=["meta", "image", "image_mismatch"],
-                    choices=["meta", "image", "image_mismatch", "inspector", "postfire_image", "prepost_image"])
+                    choices=["meta", "image", "image_mismatch", "inspector", "postfire_image", "prepost_image",
+                             "image_masked", "postfire_masked"])
     ap.add_argument("--context", nargs="+", default=["neutral", "extreme"], choices=["neutral", "extreme"])
     ap.add_argument("--pilot-set", default="diagnostic", choices=["diagnostic", "natural", "all"])
     ap.add_argument("--limit", type=int, default=0, help="max buildings (0 = all), taken balanced per event")
@@ -260,7 +279,7 @@ def main() -> None:
 
     if not args.report_only:
         recs = [json.loads(line) for line in Path(args.records).read_text().splitlines()]
-        if {"postfire_image", "prepost_image"} & set(args.evidence):
+        if {"postfire_image", "prepost_image", "postfire_masked"} & set(args.evidence):
             recs = [r for r in recs if r.get("imagery_postfire", {}).get("accepted")]
         recs = [r for r in recs if r["imagery"]["accepted"]
                 and (args.pilot_set == "all" or r["pilot_set"] == args.pilot_set)]
@@ -320,6 +339,10 @@ def main() -> None:
             if e == "postfire_image":
                 img_rec = r
                 img = Path(r["imagery_postfire"]["image_path"]).read_bytes()
+            if e in ("image_masked", "postfire_masked"):
+                img_rec = r
+                src = r["imagery"]["image_path"] if e == "image_masked" else r["imagery_postfire"]["image_path"]
+                img = masked_jpeg(src)
             if e == "prepost_image":
                 img_rec = r
                 img = [Path(r["imagery"]["image_path"]).read_bytes(), Path(r["imagery_postfire"]["image_path"]).read_bytes()]

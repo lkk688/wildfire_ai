@@ -139,14 +139,25 @@ def main() -> None:
     ap.add_argument("--bs", type=int, default=4)
     ap.add_argument("--grad-accum", type=int, default=4)
     ap.add_argument("--eval-only-base", action="store_true", help="only score the base model (epoch 0)")
+    ap.add_argument("--train-n", type=int, default=0, help="data-efficiency runs: seeded stratified subset of train")
+    ap.add_argument("--subset-seed", type=int, default=0)
     ap.add_argument("--also-test-base", action="store_true",
                     help="also score the untrained base on test (saved separately; never used for selection)")
     args = ap.parse_args()
     random.seed(1019)
     torch.manual_seed(1019)
-    out = ROOT / "output" / "experiments" / "postfire" / f"sft_{args.model.split('/')[-1]}"
+    out = ROOT / "output" / "experiments" / "postfire" / (f"sft_{args.model.split('/')[-1]}"
+                                                          + (f"_n{args.train_n}_s{args.subset_seed}" if args.train_n else ""))
     out.mkdir(parents=True, exist_ok=True)
     tr, va, te = load("train"), load("val"), load("test")
+    if args.train_n:
+        rs = random.Random(1000 + args.subset_seed)
+        by = {}
+        for r in tr:
+            by.setdefault(r["labels"]["outcome"], []).append(r)
+        frac = args.train_n / len(tr)
+        tr = [r for v in by.values() for r in rs.sample(v, max(1, round(frac * len(v))))]
+        rs.shuffle(tr)
     print(f"train {len(tr)} val {len(va)} test {len(te)}", flush=True)
 
     proc = AutoProcessor.from_pretrained(args.model)
