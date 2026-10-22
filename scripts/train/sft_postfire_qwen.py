@@ -139,6 +139,8 @@ def main() -> None:
     ap.add_argument("--bs", type=int, default=4)
     ap.add_argument("--grad-accum", type=int, default=4)
     ap.add_argument("--eval-only-base", action="store_true", help="only score the base model (epoch 0)")
+    ap.add_argument("--also-test-base", action="store_true",
+                    help="also score the untrained base on test (saved separately; never used for selection)")
     args = ap.parse_args()
     random.seed(1019)
     torch.manual_seed(1019)
@@ -159,6 +161,11 @@ def main() -> None:
     np.save(out / "val_epoch0.npy", pv0)
     log["epochs"].append({"epoch": 0, "val": m0, "sec": time.time() - t0})
     print("epoch 0 (base, no LoRA):", m0, flush=True)
+    if args.also_test_base and not args.eval_only_base:
+        ptb = score(model, batcher, te)
+        np.save(out / "test_base_probs.npy", ptb)
+        log["test_base"] = metrics(te, ptb)
+        print("test base (no LoRA, same readout):", log["test_base"], flush=True)
     if args.eval_only_base:
         pt0 = score(model, batcher, te)
         np.save(out / "test_base_probs.npy", pt0)
