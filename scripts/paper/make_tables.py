@@ -148,11 +148,32 @@ def prefire_table(macros):
                    "ceilValuePair": f3(miss_rand_pair), "ceilMissPair": f3(miss_only_pair),
                    "refMetaAuc": f3(tmeta["auroc"])})
 
-    L = [r"\begin{table*}[t]", r"\centering", r"\small", r"\setlength{\tabcolsep}{4pt}",
-         r"\begin{tabular}{l cc cc cc}", r"\toprule",
-         r" & \multicolumn{2}{c}{Single building (AUROC)} & \multicolumn{2}{c}{Neighbour pairs, test (acc.)} & \multicolumn{2}{c}{Untouched val events} \\",
-         r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}",
-         r"Model & image & $\Delta$ vs.\ mismatched & image+meta & meta only & $\Delta$ vs.\ mismatched & pair acc. \\",
+    c1p = EXP / "c1_scaleup.json"
+    c1 = json.loads(c1p.read_text()) if c1p.exists() else {}
+
+    def xl_vlm(prun, trun):
+        pa = pair_acc(prun, ["pairs_test_xl.jsonl"], "image") if (EXP / "vlm_pairs" / prun / "raw.jsonl").exists() else None
+        t = direct(trun) if (EXP / "vlm_conditions" / trun / "summary.json").exists() else None
+        return [f3(pa[0]) if pa else "--", f3(t[0]["auroc"]) if t and t[0] else "--"]
+
+    def xl_local(key):
+        d = c1.get(key, {})
+        return [f3(d["T2"]["pair_acc"]) if "T2" in d else "--", f3(d["T1"]["auroc"]) if "T1" in d else "--"]
+    xl_rows = {"Claude Sonnet 5.5": xl_vlm("xl_pairs_sonnet", "xl_t1_sonnet"),
+               "Qwen3.8-27B (open)": xl_vlm("xl_pairs_qwen38", "xl_t1_qwen38")}
+    if c1:
+        macros["xlNPairs"] = str(c1["n_pairs"])
+        macros["xlNOne"] = str(c1["n_t1"])
+        for k, m in [("tabular", "Tab"), ("dinov2_probe", "Probe"), ("dinov2_ranker", "Ranker"), ("prefire_lora_4b", "Lora")]:
+            v = xl_local(k)
+            macros[f"xl{m}Two"], macros[f"xl{m}One"] = v
+        macros["xlSonnetTwo"], macros["xlSonnetOne"] = xl_rows["Claude Sonnet 5.5"]
+        macros["xlQwenTwo"], macros["xlQwenOne"] = xl_rows["Qwen3.8-27B (open)"]
+    L = [r"\begin{table*}[t]", r"\centering", r"\small", r"\setlength{\tabcolsep}{3.2pt}",
+         r"\resizebox{\linewidth}{!}{%", r"\begin{tabular}{l cc cc cc cc}", r"\toprule",
+         r" & \multicolumn{2}{c}{Single building (AUROC)} & \multicolumn{2}{c}{Neighbour pairs, test (acc.)} & \multicolumn{2}{c}{Untouched val events} & \multicolumn{2}{c}{Larger test sets} \\",
+         r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}",
+         r"Model & image & $\Delta$ vs.\ mismatched & image+meta & meta only & $\Delta$ vs.\ mismatched & pair acc. & pairs & natural \\",
          r"\midrule"]
     for name, c, inc, pi, pm, cv, cpv in rows:
         L.append(" & ".join([
@@ -162,26 +183,27 @@ def prefire_table(macros):
             f"{f3(pi[0])} {ci(pi[1], pi[2])}" if pi else "--",
             f"{f3(pm[0])}" if pm else "--",
             f"{sgn(cv['estimate'])} {ci(*cv['ci95'])}" if cv else "--",
-            f"{f3(cpv[0])} {ci(cpv[1], cpv[2])}" if cpv else "--"]) + r" \\")
+            f"{f3(cpv[0])} {ci(cpv[1], cpv[2])}" if cpv else "--", *xl_rows.get(name, ["--", "--"])]) + r" \\")
     L += [r"\midrule",
           " & ".join(["Tabular metadata (type, year, value)", f3(tmeta["auroc"]), "--", f3(pref_meta), "--", "--",
-                      f3(ref["H6 tabular prefire_meta (train-only) pair acc"])]) + r" \\",
+                      f3(ref["H6 tabular prefire_meta (train-only) pair acc"]), *xl_local("tabular")]) + r" \\",
           " & ".join(["Frozen DINOv2 + LR", f3(emb_d["score"]), "--", f3(emb_p["score"]), "--", "--",
-                      f3(ref["H7 DINOv2 head pair acc confirm_pairs"])]) + r" \\",
+                      f3(ref["H7 DINOv2 head pair acc confirm_pairs"]), *xl_local("dinov2_probe")]) + r" \\",
           *([" & ".join(["DINOv2 ranker, trained on 2019--23 pairs", "--", "--", f3(ptb["image (DINOv2, 3 scales)"]["test"]["pair_acc"]),
-                         "--", "--", f3(ptb["image (DINOv2, 3 scales)"]["val"]["pair_acc"])]) + r" \\"] if ptb else []),
+                         "--", "--", f3(ptb["image (DINOv2, 3 scales)"]["val"]["pair_acc"]), *xl_local("dinov2_ranker")]) + r" \\"] if ptb else []),
           *([" & ".join(["Qwen3.5-4B + LoRA, pre-fire", f3(pfl["T1_auroc"]), "--", f3(pfl["T2_test_pair_acc"]), "--", "--",
-                         f3(pfl["T2_val_pair_acc"])]) + r" \\"] if pfl else []),
-          " & ".join([r"Oracle: attribute values$^\dagger$", "--", "--", f"{f3(miss_rand_pair)}--{f3(miss_mode_pair)}", "--", "--", "--"]) + r" \\",
-          " & ".join([r"Oracle: missingness pattern only$^\dagger$", "--", "--", f3(miss_only_pair), "--", "--", "--"]) + r" \\",
-          r"\bottomrule", r"\end{tabular}",
+                         f3(pfl["T2_val_pair_acc"]), *xl_local("prefire_lora_4b")]) + r" \\"] if pfl else []),
+          " & ".join([r"Oracle: attribute values$^\dagger$", "--", "--", f"{f3(miss_rand_pair)}--{f3(miss_mode_pair)}", "--", "--", "--", "--", "--"]) + r" \\",
+          " & ".join([r"Oracle: missingness pattern only$^\dagger$", "--", "--", f3(miss_only_pair), "--", "--", "--", "--", "--"]) + r" \\",
+          r"\bottomrule", r"\end{tabular}}",
           r"\caption{\textbf{Pre-fire structure loss.} Zero-shot VLMs on time-verified pre-fire crops of held-out 2024--25 fires "
           r"(238 balanced buildings; 403 same-fire neighbour pairs 15--100\,m apart), and pre-registered replication on untouched "
           r"2019--23 validation fires (220 buildings; 289 pairs). $\Delta$ vs.\ mismatched: AUROC with the building's own image minus "
           r"with another building's image from the same fire. Brackets: 95\% fire-event cluster bootstrap. "
           r"$^\dagger$HGB on post-fire inspector records (not available before a fire), same 403 pairs: attribute values with "
           r"unknowns imputed randomly (lower) or by the mode (upper; partly encodes missingness), vs.\ only the pattern of missing fields. "
-          r"Replication intervals are fire-event bootstrap; the pre-registered pair-level interval for Sonnet is [.500, .611].}",
+          r"Replication intervals are fire-event bootstrap; the pre-registered pair-level interval for Sonnet is [.500, .611]. "
+          r"Larger test sets: 628 further pairs (3 fires) and 701 buildings sampled at natural prevalence (42.5\% destroyed) from 2024--25 fires.}",
           r"\label{tab:prefire}", r"\end{table*}"]
     return "\n".join(L)
 
