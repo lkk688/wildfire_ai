@@ -134,6 +134,7 @@ run; no analysis rule changed.
 
 | Post-fire: a 4B open VLM with LoRA SFT on 1,646 train-event buildings beats zero-shot Haiku/Sonnet and a 27B open model on unseen 2024+ fires, **but only ties a frozen DINOv2-base + LR** | SFT 0.892 (full test); vs Haiku post +0.095 [+0.046, +0.147], vs Sonnet post +0.065 [+0.021, +0.106], vs Qwen3.8-27B +0.192; vs frozen LP +0.011 [−0.007, +0.028] (`postfire/comparison.md`, pre-registered in `POSTFIRE_TASK_PLAN.md`) |
 | Readout matters: same 4B base, generated number 0.644 vs first-token probability 0.762 | `postfire/comparison.md` |
+| Training-free retrieval (4 retrieved labelled shots, cf. Chen et al. 2610.02451) does not help on real outcomes: Qwen +0.019 vs zero-shot, +0.043 vs random shots, +0.024 vs 4-NN vote (all CIs include 0); Sonnet −0.012; ~0.14 below SFT / linear probe | `postfire/retrieval/report.md` (pre-registered R1–R4) |
 | Scale (9B vs 4B, same recipe): small, not significant gain (0.903 vs 0.892, Δ +0.011 [−0.003, +0.023]); 9B base is *worse* than 4B base before SFT (0.709 vs 0.762) | `postfire/comparison.md` |
 | Output-form value over a frozen linear head: no selective-prediction advantage (AURC Δ ≈ 0); 5-level grading advantage borderline (9B QWK lower bound +0.0001; 4B not met); minor/major levels unrecognisable for every model | `postfire/output_value.md` |
 
