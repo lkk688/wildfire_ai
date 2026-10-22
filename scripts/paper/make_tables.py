@@ -202,7 +202,7 @@ def postfire_table(macros):
         ("Zero-shot", "Qwen3.8-27B (post / pre+post)", ("Qwen3.8-27B zero-shot | post", "Qwen3.8-27B zero-shot | pre+post")),
         ("Zero-shot", "Qwen3.5-4B, generated $p$", ("Qwen3.5-4B zero-shot (generative) | post",)),
         ("Zero-shot", "Qwen3.5-4B, token-prob.\\ readout", ("Qwen3.5-4B base (same readout)",)),
-        ("Supervised", "DINOv2-small fine-tuned", ("ft DINOv2-small (pre-registered S2 ref)",)),
+        ("Supervised", "DINOv2-small fine-tuned (pre-reg.)", ("ft DINOv2-small (pre-registered S2 ref)",)),
         ("Supervised", "Frozen DINOv2 + LR (post / pre+post)", ("lp_post facebook/dinov2-base (post-hoc stricter ref)", "lp_prepost facebook/dinov2-base (post-hoc stricter ref)")),
         ("SFT (ours)", "Qwen3.5-4B + LoRA", ("Qwen3.5-4B + LoRA SFT (ours)",)),
         ("SFT (ours)", "Qwen3.5-9B + LoRA", ("Qwen3.5-9B + LoRA SFT",)),
@@ -218,6 +218,23 @@ def postfire_table(macros):
             else:
                 cells.append(" / ".join(f3(v["auroc"]) if v else "--" for v in vals))
         L.append(f"{grp} & {label} & {cells[0]} & {cells[1]}" + r" \\")
+    ftj = EXP / "postfire" / "ft_dinov2base_tuned.json"
+    if ftj.exists():
+        from sklearn.metrics import roc_auc_score
+        fj = json.loads(ftj.read_text())
+        pft = dict(zip(fj["test_ids"], np.load(EXP / "postfire" / "ft_dinov2base_tuned_test_probs.npy")))
+        te = {json.loads(l)["global_id"]: json.loads(l) for l in (SPL / "postfire_test.jsonl").read_text().splitlines()}
+        sub_ids = {r["model"] for r in comp["rows"]}
+        full_ids = [g for g in json.loads((EXP / "postfire" / "sft_Qwen3.5-4B" / "log.json").read_text())["test_ids"] if g in pft]
+        sub = set(json.loads(l)["global_id"] for l in (EXP / "vlm_conditions" / "pf_test_claude_sonnet_5_5" / "raw.jsonl").read_text().splitlines())
+        cell = []
+        for ids in ([g for g in full_ids if g in sub], full_ids):
+            yy = [int(te[g]["labels"]["outcome"] == "Destroyed") for g in ids]
+            cell.append(f3(roc_auc_score(yy, [pft[g] for g in ids])))
+        k_small = next(i for i, l in enumerate(L) if "DINOv2-small fine-tuned" in l)
+        L.insert(k_small + 1, f"Supervised & DINOv2-base fine-tuned (tuned on val) & {cell[0]} & {cell[1]}" + r" \\")
+        macros["pfFtBaseTuned"] = cell[1]
+        macros["pfFtBaseTunedVal"] = f3(fj["selected"]["val"])
     for k, lab in [("kNN-50 (embedding)", "Embedding kNN ($k{=}50$)"),
                    ("qwen3_8_27b few-shot retrieved", "Qwen3.8-27B + 4 retrieved shots"),
                    ("claude_sonnet_5_5 few-shot retrieved", "Sonnet + 4 retrieved shots")]:

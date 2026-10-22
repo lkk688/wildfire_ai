@@ -79,15 +79,17 @@ def linear_probe(encoder, tr, va, te, prepost: bool):
 
 
 class DS(torch.utils.data.Dataset):
-    def __init__(self, recs, proc, train):
-        self.recs, self.proc, self.train = recs, proc, train
+    def __init__(self, recs, proc, train, crop=True):
+        self.recs, self.proc, self.train, self.crop = recs, proc, train, crop
         self.y = ylev(recs)
 
     def __len__(self):
         return len(self.recs)
 
     def __getitem__(self, i):
-        im = Image.open(self.recs[i]["imagery_postfire"]["image_path"]).convert("RGB").crop((128, 128, 384, 384))
+        im = Image.open(self.recs[i]["imagery_postfire"]["image_path"]).convert("RGB")
+        if self.crop:
+            im = im.crop((128, 128, 384, 384))
         if self.train:
             if np.random.rand() < 0.5:
                 im = im.transpose(Image.FLIP_LEFT_RIGHT)
@@ -96,21 +98,21 @@ class DS(torch.utils.data.Dataset):
         return x, int(self.y[i])
 
 
-def finetune(tr, va, te, epochs=8, lr=3e-5, bs=32):
+def finetune(tr, va, te, epochs=8, lr=3e-5, bs=32, name="facebook/dinov2-small", crop=True):
     from transformers import AutoImageProcessor, AutoModelForImageClassification
-    name = "facebook/dinov2-small"
     proc = AutoImageProcessor.from_pretrained(name)
     model = AutoModelForImageClassification.from_pretrained(name, num_labels=len(LEVELS)).cuda()
     counts = np.bincount(ylev(tr), minlength=len(LEVELS)) + 1
     w = torch.tensor((counts.sum() / counts) / (counts.sum() / counts).mean(), dtype=torch.float).cuda()
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.05)
-    dl = torch.utils.data.DataLoader(DS(tr, proc, True), batch_size=bs, shuffle=True, num_workers=4)
+    dl = torch.utils.data.DataLoader(DS(tr, proc, True, crop), batch_size=bs, shuffle=True, num_workers=4)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=epochs * len(dl) + 5, pct_start=0.1)
 
     @torch.no_grad()
     def predict(recs):
         model.eval()
         out = []
-        for x, _ in torch.utils.data.DataLoader(DS(recs, proc, False), batch_size=64, num_workers=4):
+        for x, _ in torch.utils.data.DataLoader(DS(recs, proc, False, crop), batch_size=64, num_workers=4):
             out.append(torch.softmax(model(pixel_values=x.cuda()).logits, -1).cpu().numpy())
         model.train()
         return np.concatenate(out)
@@ -121,7 +123,9 @@ def finetune(tr, va, te, epochs=8, lr=3e-5, bs=32):
             loss = torch.nn.functional.cross_entropy(model(pixel_values=x.cuda()).logits, y.cuda(), weight=w)
             opt.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
+            sched.step()
         pv = predict(va)
         auc = roc_auc_score(ybin(va), pv[:, 3:].sum(1))
         print(f"  epoch {ep}: val AUROC {auc:.4f}", flush=True)
@@ -135,9 +139,27 @@ def finetune(tr, va, te, epochs=8, lr=3e-5, bs=32):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-ft", action="store_true")
+    ap.add_argument("--tuned-ft-only", action="store_true",
+                    help="(review W8) tuned DINOv2-base fine-tune; config chosen on val among crop/full x lr")
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     tr, va, te = load("train"), load("val"), load("test")
+    if args.tuned_ft_only:
+        cands = []
+        for crop in (True, False):
+            for lr in (1e-5, 3e-5):
+                p, probs, vbest = finetune(tr, va, te, epochs=12, lr=lr, bs=32, name="facebook/dinov2-base", crop=crop)
+                cands.append({"crop": crop, "lr": lr, "val": vbest, "test_auroc": float(roc_auc_score(ybin(te), p)),
+                              "test_macro_f1": float(f1_score(ylev(te), probs.argmax(1), average="macro")), "p": p})
+                print({k: v for k, v in cands[-1].items() if k != "p"}, flush=True)
+        best = max(cands, key=lambda c: c["val"])
+        np.save(OUT / "ft_dinov2base_tuned_test_probs.npy", best["p"])
+        (OUT / "ft_dinov2base_tuned.json").write_text(json.dumps(
+            {"selected": {k: v for k, v in best.items() if k != "p"},
+             "all": [{k: v for k, v in c.items() if k != "p"} for c in cands],
+             "test_ids": [r["global_id"] for r in te]}, indent=2, default=float))
+        print("SELECTED", {k: v for k, v in best.items() if k != "p"})
+        return
     print(f"train {len(tr)} val {len(va)} test {len(te)}; test destroyed rate {ybin(te).mean():.2f}", flush=True)
     res = []
     preds = {"global_id": [r["global_id"] for r in te]}
