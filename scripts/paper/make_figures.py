@@ -42,14 +42,14 @@ def collect():
          pf[("subset400", "Claude Haiku 5.5 zero-shot | post")]),
         ("MiniMax-M3", direct("pilot_minimax_m3_diag")[0]["auroc"], pair_acc("pairs_minimax_m3", tp, "image")[0], None),
         ("Qwen3.8-27B (open)", direct("pilot_qwen38_diag")[0]["auroc"], pair_acc("pairs_qwen38", tp, "image")[0],
-         pf[("full", "Qwen3.8-27B zero-shot | post")]),
-        ("Qwen3.5-4B + LoRA (ours)", None, None, pf[("full", "Qwen3.5-4B + LoRA SFT (ours)")]),
+         pf[("subset400", "Qwen3.8-27B zero-shot | post")]),
+        ("Qwen3.5-4B + LoRA (ours)", None, None, pf[("subset400", "Qwen3.5-4B + LoRA SFT (ours)")]),
         ("Frozen DINOv2 + LR", next(r for r in emb if r["eval"] == "pilot diagnostic")["score"],
          next(r for r in emb if r["eval"].startswith("pairs"))["score"],
-         pf[("full", "lp_post facebook/dinov2-base (post-hoc stricter ref)")]),
-        ("Tabular: year built, value", tmeta["auroc"], md_table_value(EXP / "pairs_reference.md", "prefire_meta |", 1), None),
+         pf[("subset400", "lp_post facebook/dinov2-base (post-hoc stricter ref)")]),
+        ("Tabular: type, year, value", tmeta["auroc"], md_table_value(EXP / "pairs_reference.md", "prefire_meta |", 1), None),
     ]
-    ceiling = md_table_value(EXP / "missingness_ablation.md", "values_random_imputed", 3)
+    ceiling = json.loads((EXP / "oracle_same_pairs.json").read_text())["values, random-imputed"]["all"]
     return rows, ceiling
 
 
@@ -62,7 +62,7 @@ def main() -> None:
     y = np.arange(len(rows))[::-1]
     ax.axvline(0.5, color=MUTED, lw=0.8, ls=(0, (2, 2)), zorder=1)
     ax.axvspan(0.5, ceiling, ymin=0, ymax=1, color="#f3eee6", zorder=0)
-    ax.text(ceiling + 0.006, y.max() + 0.8, f"T2 oracle: inspector attributes ({ceiling:.2f})", ha="left", va="center",
+    ax.text(ceiling + 0.006, y.max() + 0.8, f"T2 oracle: attribute values (≥{ceiling:.2f})", ha="left", va="center",
             fontsize=6.5, color=MUTED)
     ax.text(0.494, -0.45, "chance", ha="right", va="bottom", fontsize=6.5, color=MUTED, rotation=90)
     for (label, color, marker), k in zip(TASKS, (1, 2, 3)):

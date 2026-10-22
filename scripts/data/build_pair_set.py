@@ -43,7 +43,7 @@ def main() -> None:
     ap.add_argument("--exclude", nargs="*", default=[], help="pair files whose buildings must not be reused")
     ap.add_argument("--out", default="pairs_test.jsonl")
     ap.add_argument("--seed-offset", type=int, default=11)
-    ap.add_argument("--split", default="test", choices=["test", "val"])
+    ap.add_argument("--split", default="test", choices=["test", "val", "train"])
     ap.add_argument("--near-m", type=float, default=100.0,
                     help="drop buildings within this distance of any record from another split")
     args = ap.parse_args()

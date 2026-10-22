@@ -114,10 +114,18 @@ def prefire_table(macros):
     emb_p = next(r for r in emb if r["eval"].startswith("pairs"))
     ref = json.loads((EXP / "confirmatory" / "pair_references.json").read_text())
     pref_meta = md_table_value(EXP / "pairs_reference.md", "prefire_meta |", 1)
-    miss_rand_pair = md_table_value(EXP / "missingness_ablation.md", "values_random_imputed", 3)
-    miss_only_pair = md_table_value(EXP / "missingness_ablation.md", "missing_only", 3)
-    raw_pair = md_table_value(EXP / "missingness_ablation.md", "raw (Unknown", 3)
-    macros["ceilRawPair"] = f3(raw_pair)
+    osp = json.loads((EXP / "oracle_same_pairs.json").read_text())
+    miss_rand_pair = osp["values, random-imputed"]["all"]
+    miss_mode_pair = osp["values, mode-imputed"]["all"]
+    miss_only_pair = osp["missingness only"]["all"]
+    macros["oracleModePair"] = f3(miss_mode_pair)
+    macros["oracleRawPair"] = f3(osp["raw (Unknown as category)"]["all"])
+    macros["oracleCompleteN"] = str(osp["n_complete_case"])
+    macros["oracleCompleteValues"] = f3(osp["values, random-imputed"]["complete_case"])
+    macros["oracleCompleteMeta"] = f3(osp["prefire metadata"]["complete_case"])
+    macros["ceilRawPair"] = f3(md_table_value(EXP / "missingness_ablation.md", "raw (Unknown", 3))
+    macros["allPairsMissOnly"] = f3(md_table_value(EXP / "missingness_ablation.md", "missing_only", 3))
+    macros["allPairsRandom"] = f3(md_table_value(EXP / "missingness_ablation.md", "values_random_imputed", 3))
     macros.update({"refMetaPair": f3(pref_meta), "refDinoAuc": f3(emb_d["score"]), "refDinoPair": f3(emb_p["score"]),
                    "ceilValuePair": f3(miss_rand_pair), "ceilMissPair": f3(miss_only_pair),
                    "refMetaAuc": f3(tmeta["auroc"])})
@@ -126,7 +134,7 @@ def prefire_table(macros):
          r"\begin{tabular}{l cc cc cc}", r"\toprule",
          r" & \multicolumn{2}{c}{Single building (AUROC)} & \multicolumn{2}{c}{Neighbour pairs, test (acc.)} & \multicolumn{2}{c}{Untouched val events} \\",
          r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}",
-         r"Model & image & $\Delta$ vs.\ mismatched & image+meta & meta only & $\Delta$ AUROC (direct) & pair acc. \\",
+         r"Model & image & $\Delta$ vs.\ mismatched & image+meta & meta only & $\Delta$ vs.\ mismatched & pair acc. \\",
          r"\midrule"]
     for name, c, inc, pi, pm, cv, cpv in rows:
         L.append(" & ".join([
@@ -138,19 +146,20 @@ def prefire_table(macros):
             f"{sgn(cv['estimate'])} {ci(*cv['ci95'])}" if cv else "--",
             f"{f3(cpv[0])} {ci(cpv[1], cpv[2])}" if cpv else "--"]) + r" \\")
     L += [r"\midrule",
-          " & ".join(["Tabular, pre-fire metadata (HGB)", f3(tmeta["auroc"]), "--", f3(pref_meta), "--", "--",
+          " & ".join(["Tabular metadata (type, year, value)", f3(tmeta["auroc"]), "--", f3(pref_meta), "--", "--",
                       f3(ref["H6 tabular prefire_meta (train-only) pair acc"])]) + r" \\",
           " & ".join(["Frozen DINOv2 + LR", f3(emb_d["score"]), "--", f3(emb_p["score"]), "--", "--",
                       f3(ref["H7 DINOv2 head pair acc confirm_pairs"])]) + r" \\",
-          " & ".join([r"Inspector attributes, values only$^\dagger$", "--", "--", f3(miss_rand_pair), "--", "--", "--"]) + r" \\",
-          " & ".join([r"Inspector attributes, missingness only$^\dagger$", "--", "--", f3(miss_only_pair), "--", "--", "--"]) + r" \\",
+          " & ".join([r"Oracle: attribute values$^\dagger$", "--", "--", f"{f3(miss_rand_pair)}--{f3(miss_mode_pair)}", "--", "--", "--"]) + r" \\",
+          " & ".join([r"Oracle: missingness pattern only$^\dagger$", "--", "--", f3(miss_only_pair), "--", "--", "--"]) + r" \\",
           r"\bottomrule", r"\end{tabular}",
           r"\caption{\textbf{Pre-fire structure loss.} Zero-shot VLMs on time-verified pre-fire crops of held-out 2024--25 fires "
           r"(238 balanced buildings; 403 same-fire neighbour pairs 15--100\,m apart), and pre-registered replication on untouched "
           r"2019--23 validation fires (220 buildings; 289 pairs). $\Delta$ vs.\ mismatched: AUROC with the building's own image minus "
           r"with another building's image from the same fire. Brackets: 95\% fire-event cluster bootstrap. "
-          r"$^\dagger$Post-fire inspector records (not available before a fire): attribute values with unknowns randomly imputed vs.\ "
-          r"only the pattern of missing fields, all 2024--25 test pairs within 100\,m.}",
+          r"$^\dagger$HGB on post-fire inspector records (not available before a fire), same 403 pairs: attribute values with "
+          r"unknowns imputed randomly (lower) or by the mode (upper; partly encodes missingness), vs.\ only the pattern of missing fields. "
+          r"Replication intervals are fire-event bootstrap; the pre-registered pair-level interval for Sonnet is [.500, .611].}",
           r"\label{tab:prefire}", r"\end{table*}"]
     return "\n".join(L)
 

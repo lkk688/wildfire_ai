@@ -67,6 +67,9 @@ INSPECTOR_LABELS = {
 }
 
 
+NO_FIRE_NAME = False  # contamination check: withhold fire name and date from the prompt
+
+
 def build_prompt(rec: dict, evidence: str, context: str) -> str:
     pf = rec["inputs"]["prefire"]
     lines = [
@@ -76,7 +79,8 @@ def build_prompt(rec: dict, evidence: str, context: str) -> str:
         "[Pre-fire record]",
         f"- Structure type: {pf.get('structure_type') or 'not recorded'}",
         f"- Year built: {pf.get('year_built') or 'not recorded'}",
-        f"- Fire event: {pf.get('incident_name')} ({pf.get('county')} County), started {pf.get('incident_start')}",
+        ("- Fire event: a California wildland-urban interface fire (name and date withheld)" if NO_FIRE_NAME else
+         f"- Fire event: {pf.get('incident_name')} ({pf.get('county')} County), started {pf.get('incident_start')}"),
     ]
     if evidence in ("image", "image_mismatch"):
         lines += ["", "[Imagery]",
@@ -266,12 +270,15 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--max-tokens", type=int, default=1200, help="raise if replies hit max_tokens")
     ap.add_argument("--no-think", action="store_true", help="Qwen3.x: disable thinking via chat template")
+    ap.add_argument("--no-fire-name", action="store_true", help="withhold fire name/date (contamination check)")
     ap.add_argument("--subset", type=int, default=0, help="fixed seeded subset size (stratified by event x outcome)")
     ap.add_argument("--run-name", default=None)
     ap.add_argument("--report-only", action="store_true")
     ap.add_argument("--records", default=str(PILOT))
     args = ap.parse_args()
 
+    global NO_FIRE_NAME
+    NO_FIRE_NAME = args.no_fire_name
     run = args.run_name or re.sub(r"[^a-z0-9]+", "_", args.model.lower())
     out_dir = OUT_ROOT / run
     out_dir.mkdir(parents=True, exist_ok=True)
