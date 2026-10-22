@@ -308,9 +308,9 @@ def main() -> None:
         l = json.loads(le.read_text())
         for n, m in [(100, "Hundred"), (400, "FourHundred"), (800, "EightHundred")]:
             macros[f"lpN{m}"] = f3(float(np.mean(l[str(n)])))
-            d = EXP / "postfire" / f"sft_Qwen3.5-4B_n{n}_s0" / "log.json"
-            if d.exists():
-                macros[f"sftN{m}"] = f3(json.loads(d.read_text())["test"]["auroc"])
+            v = [json.loads(f.read_text())["test"]["auroc"] for f in (EXP / "postfire").glob(f"sft_Qwen3.5-4B_n{n}_s*/log.json")]
+            if v:
+                macros[f"sftN{m}"] = f3(float(np.mean(v)))
     fu = EXP / "prefire_fusion.md"
     if fu.exists():
         best = 0.0

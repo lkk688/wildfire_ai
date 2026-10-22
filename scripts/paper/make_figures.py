@@ -35,6 +35,8 @@ def collect():
     tab = json.loads((EXP / "tabular_baselines_pilot.json").read_text())
     tmeta = next(r for r in tab["runs"] if r["feature_set"] == "prefire_meta" and r["model"] == "hgb"
                  and r["pilot_set"] == "diagnostic")
+    plp = EXP / "prefire_sft_Qwen3.5-4B" / "log.json"
+    prelora = json.loads(plp.read_text()).get("final", {}) if plp.exists() else {}
     rows = [
         ("Claude Sonnet 5.5", direct("pilot_sonnet_diag")[0]["auroc"], pair_acc("pairs_sonnet", tp, "image")[0],
          pf[("subset400", "Claude Sonnet 5.5 zero-shot | post")]),
@@ -43,7 +45,8 @@ def collect():
         ("MiniMax-M3", direct("pilot_minimax_m3_diag")[0]["auroc"], pair_acc("pairs_minimax_m3", tp, "image")[0], None),
         ("Qwen3.8-27B (open)", direct("pilot_qwen38_diag")[0]["auroc"], pair_acc("pairs_qwen38", tp, "image")[0],
          pf[("subset400", "Qwen3.8-27B zero-shot | post")]),
-        ("Qwen3.5-4B + LoRA (ours)", None, None, pf[("subset400", "Qwen3.5-4B + LoRA SFT (ours)")]),
+        ("Qwen3.5-4B + LoRA (ours)", prelora.get("T1_auroc"), prelora.get("T2_test_pair_acc"),
+         pf[("subset400", "Qwen3.5-4B + LoRA SFT (ours)")]),
         ("Frozen DINOv2 + LR", next(r for r in emb if r["eval"] == "pilot diagnostic")["score"],
          next(r for r in emb if r["eval"].startswith("pairs"))["score"],
          pf[("subset400", "lp_post facebook/dinov2-base (post-hoc stricter ref)")]),
@@ -142,15 +145,21 @@ def mechanism():
 
     sizes = [100, 400, 800, 1646]
     sft = []
+    sft_sd = []
     for n in sizes:
-        d = EXP / "postfire" / ("sft_Qwen3.5-4B" if n == 1646 else f"sft_Qwen3.5-4B_n{n}_s0")
-        sft.append(json.loads((d / "log.json").read_text())["test"]["auroc"])
+        if n == 1646:
+            v = [json.loads((EXP / "postfire" / "sft_Qwen3.5-4B" / "log.json").read_text())["test"]["auroc"]]
+        else:
+            v = [json.loads(f.read_text())["test"]["auroc"] for f in (EXP / "postfire").glob(f"sft_Qwen3.5-4B_n{n}_s*/log.json")]
+        sft.append(float(np.mean(v)))
+        sft_sd.append(float(np.std(v)))
     lp = json.loads((EXP / "postfire" / "lp_efficiency.json").read_text())
     lpm = [np.mean(lp[str(n)]) for n in sizes]
     lps = [np.std(lp[str(n)]) for n in sizes]
     comp = json.loads((EXP / "postfire" / "comparison.json").read_text())
     base = next(r["auroc"] for r in comp["rows"] if r["set"] == "full" and r["model"] == "Qwen3.5-4B base (same readout)")
-    a2.plot(sizes, sft, color=TASKS[2][1], lw=2, marker="^", ms=5, mec="white", label="Qwen3.5-4B + LoRA SFT")
+    a2.errorbar(sizes, sft, yerr=sft_sd, color=TASKS[2][1], lw=2, marker="^", ms=5, mec="white", capsize=2,
+                label="Qwen3.5-4B + LoRA SFT (3 seeds)")
     a2.errorbar(sizes, lpm, yerr=lps, color="#2a78d6", lw=2, marker="o", ms=4, mec="white", capsize=2,
                 label="frozen DINOv2 + LR (5 seeds)")
     a2.axhline(base, color=MUTED, lw=0.8, ls=(0, (2, 2)))
