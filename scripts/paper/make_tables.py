@@ -230,7 +230,7 @@ def postfire_table(macros):
         ("SFT (ours)", "Qwen3.5-9B + LoRA", ("Qwen3.5-9B + LoRA SFT",)),
     ]
     L = [r"\begin{table}[t]", r"\centering", r"\footnotesize", r"\setlength{\tabcolsep}{3pt}",
-         r"\begin{tabular}{ll cc}", r"\toprule", r" & Model & Subset-400 & Full (1{,}246) \\", r"\midrule"]
+         r"\resizebox{\linewidth}{!}{%", r"\begin{tabular}{ll cc}", r"\toprule", r" & Model & Subset-400 & Full (1{,}246) \\", r"\midrule"]
     for grp, label, keys in spec:
         cells = []
         for sname in ("subset400", "full"):
@@ -263,7 +263,7 @@ def postfire_table(macros):
         a, b = retr.get(("subset400", k)), retr.get(("full", k))
         if a or b:
             L.append(f"Retrieval & {lab} & {f3(a['auroc']) if a else '--'} & {f3(b['auroc']) if b else '--'}" + r" \\")
-    L += [r"\bottomrule", r"\end{tabular}",
+    L += [r"\bottomrule", r"\end{tabular}}",
           r"\caption{\textbf{Post-fire damage recognition} (AUROC, destroyed vs.\ not; 2024--25 test fires). "
           r"Subset-400: fixed stratified subset used for closed models. Fine-tuned and linear models are trained on "
           r"1{,}646 buildings from 2019--23 fires and selected on validation fires only.}",
