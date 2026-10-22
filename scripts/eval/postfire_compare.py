@@ -46,6 +46,10 @@ def main() -> None:
     sft = json.loads((PF / "sft_Qwen3.5-4B" / "log.json").read_text())
     pt = np.load(PF / "sft_Qwen3.5-4B" / "test_probs.npy")
     scores["Qwen3.5-4B + LoRA SFT (ours)"] = dict(zip(sft["test_ids"], pt[:, 3:].sum(1)))
+    if (PF / "sft_Qwen3.5-9B" / "test_probs.npy").exists():
+        s9 = json.loads((PF / "sft_Qwen3.5-9B" / "log.json").read_text())
+        scores["Qwen3.5-9B + LoRA SFT"] = dict(zip(s9["test_ids"], np.load(PF / "sft_Qwen3.5-9B" / "test_probs.npy")[:, 3:].sum(1)))
+        scores["Qwen3.5-9B base (same readout)"] = dict(zip(s9["test_ids"], np.load(PF / "sft_Qwen3.5-9B" / "test_base_probs.npy")[:, 3:].sum(1)))
     base = json.loads((PF / "sft_base_eval" / "log.json").read_text())
     pb = np.load(PF / "sft_base_eval" / "test_base_probs.npy")
     scores["Qwen3.5-4B base (same readout)"] = dict(zip(base["ids"], pb[:, 3:].sum(1)))
@@ -103,24 +107,27 @@ def main() -> None:
             a = auc(g, s)
             res["rows"].append({"set": sname, "model": name, "n": len(g), "auroc": a, "ci95": ci.tolist()})
             L.append(f"| {name} | {len(g)} | {a:.3f} [{ci[0]:.3f}, {ci[1]:.3f}] |")
-    ours = scores["Qwen3.5-4B + LoRA SFT (ours)"]
-    L += ["\n## Paired differences (ours − reference, same buildings, event bootstrap)\n",
-          "| Set | Reference | Δ AUROC | 95% CI |", "|---|---|---:|---|"]
-    for sname, refs in [("subset400", ["Claude Haiku 5.5 zero-shot | post", "Claude Haiku 5.5 zero-shot | pre+post",
+    L += ["\n## Paired differences (model − reference, same buildings, event bootstrap)\n",
+          "| Model | Set | Reference | Δ AUROC | 95% CI |", "|---|---|---|---:|---|"]
+    for mname in [k for k in scores if "LoRA SFT" in k]:
+      ours = scores[mname]
+      for sname, refs in [("subset400", ["Claude Haiku 5.5 zero-shot | post", "Claude Haiku 5.5 zero-shot | pre+post",
                                        "Claude Sonnet 5.5 zero-shot | post", "Claude Sonnet 5.5 zero-shot | pre+post"]),
                         ("full", ["Qwen3.5-4B base (same readout)", "Qwen3.8-27B zero-shot | post",
                                   "ft DINOv2-small (pre-registered S2 ref)", "lp_post facebook/dinov2-base (post-hoc stricter ref)",
                                   "lp_prepost facebook/dinov2-base (post-hoc stricter ref)"])]:
+        refs = refs + (["Qwen3.5-4B + LoRA SFT (ours)", "Qwen3.5-9B base (same readout)"]
+                       if sname == "full" and "9B" in mname else [])
         for ref in refs:
             g = [i for i in sets[sname] if i in ours and i in scores[ref]]
             d = auc(g, ours) - auc(g, scores[ref])
             ci = boot_diff(g, ours, scores[ref])
-            res["paired"].append({"set": sname, "reference": ref, "delta": d, "ci95": ci, "n": len(g)})
-            L.append(f"| {sname} | {ref} | {d:+.3f} | [{ci[0]:+.3f}, {ci[1]:+.3f}] |")
+            res["paired"].append({"model": mname, "set": sname, "reference": ref, "delta": d, "ci95": ci, "n": len(g)})
+            L.append(f"| {mname} | {sname} | {ref} | {d:+.3f} | [{ci[0]:+.3f}, {ci[1]:+.3f}] |")
     L += ["\n## Per-event AUROC (full set, events with >= 20 of each class)\n"]
     evs_ok = [e for e in sorted(set(ev.values()))
               if sum(1 for g in te if ev[g] == e and y[g]) >= 20 and sum(1 for g in te if ev[g] == e and not y[g]) >= 20]
-    names = ["Qwen3.5-4B + LoRA SFT (ours)", "Qwen3.5-4B base (same readout)", "Qwen3.8-27B zero-shot | post",
+    names = ["Qwen3.5-4B + LoRA SFT (ours)"] + (["Qwen3.5-9B + LoRA SFT"] if "Qwen3.5-9B + LoRA SFT" in scores else []) + ["Qwen3.5-4B base (same readout)", "Qwen3.8-27B zero-shot | post",
              "lp_post facebook/dinov2-base (post-hoc stricter ref)", "ft DINOv2-small (pre-registered S2 ref)"]
     L.append("| Event | N | " + " | ".join(n.split(" (")[0] for n in names) + " |")
     L.append("|---|---:|" + "---:|" * len(names))
