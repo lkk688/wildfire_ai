@@ -236,3 +236,65 @@ def overview():
 
 if __name__ == "__main__":
     overview()
+
+
+# ---------------------------------------------------------------- qualitative figure
+def qualitative():
+    import textwrap
+    from PIL import Image as PImage
+    sp = ROOT / "output" / "splits"
+    pairs = {json.loads(l)["pair_id"]: json.loads(l) for f in ("pairs_test.jsonl", "pairs_test_large.jsonl")
+             for l in (sp / f).read_text().splitlines()}
+    te = {json.loads(l)["global_id"]: json.loads(l) for l in (sp / "postfire_test.jsonl").read_text().splitlines()}
+    q = pairs["p0068"]
+    sonnet = next(json.loads(l) for l in (EXP / "vlm_pairs" / "pairs_sonnet" / "raw.jsonl").read_text().splitlines()
+                  if json.loads(l)["pair_id"] == "p0068" and json.loads(l)["evidence"] == "image")
+    a_is_destroyed = sonnet["destroyed_is"] == "A"
+    A, B = (q["destroyed"], q["survived"]) if a_is_destroyed else (q["survived"], q["destroyed"])
+    miss, fa = te["970933ad-b53e-4f40-b44c-d377b517f696"], te["5d44ec5b-3ce9-46c8-9923-9a94624a12b8"]
+    log = json.loads((EXP / "postfire" / "sft_Qwen3.5-4B" / "log.json").read_text())
+    s4 = dict(zip(log["test_ids"], np.load(EXP / "postfire" / "sft_Qwen3.5-4B" / "test_probs.npy")[:, 3:].sum(1)))
+    son = {json.loads(l)["global_id"]: json.loads(l) for l in (EXP / "vlm_conditions" / "pf_test_claude_sonnet_5_5" / "raw.jsonl").read_text().splitlines()
+           if json.loads(l)["evidence"] == "postfire_image"}
+
+    fig = plt.figure(figsize=(6.9, 2.75))
+    gs = fig.add_gridspec(2, 6, height_ratios=[1, 0.5], hspace=0.04, wspace=0.08)
+
+    def thumb(ax, path, title):
+        im = PImage.open(path).convert("RGB").crop((96, 96, 416, 416))
+        ax.imshow(im)
+        ax.add_patch(plt.Circle((160, 160), 26, fill=False, ec="white", lw=1.3))
+        ax.set_xticks([]); ax.set_yticks([])
+        for s_ in ax.spines.values():
+            s_.set_visible(False)
+        ax.set_title(title, fontsize=6.2, pad=2)
+
+    def yr(r):
+        return r["inputs"]["prefire"].get("year_built") or "?"
+    thumb(fig.add_subplot(gs[0, 0]), A["imagery"]["image_path"], f"A ({yr(A)}): {'destroyed' if a_is_destroyed else 'survived'}")
+    thumb(fig.add_subplot(gs[0, 1]), B["imagery"]["image_path"], f"B ({yr(B)}): {'survived' if a_is_destroyed else 'destroyed'}")
+    thumb(fig.add_subplot(gs[0, 2]), miss["imagery"]["image_path"], "pre-fire")
+    thumb(fig.add_subplot(gs[0, 3]), miss["imagery_postfire"]["image_path"], "post: Major (25–50%)")
+    thumb(fig.add_subplot(gs[0, 4]), fa["imagery"]["image_path"], "pre-fire")
+    thumb(fig.add_subplot(gs[0, 5]), fa["imagery_postfire"]["image_path"], "post: No Damage")
+    pa = sonnet["p_A_destroyed"]
+    texts = [
+        (0, 2, f"(a) Pre-fire pair, Mountain fire. Sonnet: p(A destroyed) = {pa:.2f}. “" +
+         sonnet["key_differences"][0].split(".")[0] + ".” Plausible risk reasoning, wrong outcome."),
+        (2, 4, f"(b) Missed by all models: SFT-4B p = {s4[miss['global_id']]:.2f}, Sonnet p = "
+               f"{son[miss['global_id']]['p_destroyed']:.2f}. Partial damage is barely visible from above."),
+        (4, 6, f"(c) False alarm: SFT-4B p = {s4[fa['global_id']]:.2f}, Sonnet p = {son[fa['global_id']]['p_destroyed']:.2f}. "
+               "The recorded location misses the roof; with no building in view, the models fall back on the burned "
+               "surroundings (Sonnet: \u201csurrounding woodland is heavily burned\u201d)."),
+    ]
+    for c0, c1, t in texts:
+        ax = fig.add_subplot(gs[1, c0:c1])
+        ax.axis("off")
+        ax.text(0.0, 1.0, "\n".join(textwrap.wrap(t, 40)), fontsize=5.8, va="top", ha="left", color=INK, transform=ax.transAxes)
+    fig.savefig(OUT / "fig_qualitative.pdf", bbox_inches="tight", dpi=300)
+    fig.savefig(OUT / "fig_qualitative.png", dpi=200, bbox_inches="tight")
+    print("[OK]", OUT / "fig_qualitative.pdf")
+
+
+if __name__ == "__main__":
+    qualitative()
