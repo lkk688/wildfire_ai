@@ -175,3 +175,55 @@ def mechanism():
 
 if __name__ == "__main__":
     mechanism()
+
+
+# ---------------------------------------------------------------- overview figure
+def overview():
+    import datetime as dt
+    from PIL import Image as PImage
+    sp = ROOT / "output" / "splits"
+    pf = {json.loads(l)["global_id"]: json.loads(l) for l in (sp / "postfire_test.jsonl").read_text().splitlines()}
+    pairs = {json.loads(l)["pair_id"]: json.loads(l) for l in (sp / "pairs_test.jsonl").read_text().splitlines()}
+    b = pf["6bfd53ac-2552-4df1-b13e-83de88714470"]
+    q = pairs["p0041"]
+    fig = plt.figure(figsize=(6.9, 1.75))
+    gs = fig.add_gridspec(1, 6, width_ratios=[1.55, 1, 1, 0.15, 1, 1], wspace=0.12)
+
+    def thumb(ax, path, title, sub=None, color=None):
+        im = PImage.open(path).convert("RGB").crop((96, 96, 416, 416))
+        ax.imshow(im)
+        ax.add_patch(plt.Circle((160, 160), 26, fill=False, ec=color or "white", lw=1.4))
+        ax.set_xticks([]); ax.set_yticks([])
+        for s in ax.spines.values():
+            s.set_visible(False)
+        ax.set_title(title, fontsize=6.3, pad=2)
+        if sub:
+            ax.text(0.5, -0.06, sub, transform=ax.transAxes, ha="center", va="top", fontsize=6, color=MUTED)
+
+    ax = fig.add_subplot(gs[0, 0])
+    fire = dt.date.fromisoformat(b["imagery"]["fire_start"])
+    ev = [("capture\n(pre)", dt.date.fromisoformat(b["imagery"]["capture_date"]), "#2a78d6"),
+          ("Wayback\nrelease", dt.date.fromisoformat(b["imagery"]["release_date"]), MUTED),
+          ("fire", fire, "#eb6834"),
+          ("capture\n(post)", dt.date.fromisoformat(b["imagery_postfire"]["capture_date"]), "#1baf7a")]
+    t0 = min(d for _, d, _ in ev)
+    xs = [(d - t0).days for _, d, _ in ev]
+    ax.plot([min(xs) - 20, max(xs) + 20], [0, 0], color=INK, lw=1)
+    for (lab, d, c), x, yy in zip(ev, xs, (0.35, -0.35, 0.35, -0.35)):
+        ax.scatter([x], [0], color=c, s=28, zorder=3, edgecolor="white", linewidth=1)
+        ax.text(x, yy, f"{lab}\n{d:%Y-%m-%d}", ha="center", va="center", fontsize=5.8, color=INK)
+    span = max(xs) - min(xs)
+    ax.set_ylim(-0.75, 0.75); ax.set_xlim(min(xs) - 0.12 * span, max(xs) + 0.12 * span); ax.axis("off")
+    ax.set_title("(a) per-location provenance", fontsize=7, pad=2)
+    thumb(fig.add_subplot(gs[0, 1]), q["destroyed"]["imagery"]["image_path"], "(b) T2: destroyed", "pre-fire", "#eb6834")
+    thumb(fig.add_subplot(gs[0, 2]), q["survived"]["imagery"]["image_path"], f"its neighbour ({q['dist_m']:.0f} m)",
+          "pre-fire", "white")
+    thumb(fig.add_subplot(gs[0, 4]), b["imagery"]["image_path"], "(c) T1: pre-fire", "time-verified")
+    thumb(fig.add_subplot(gs[0, 5]), b["imagery_postfire"]["image_path"], "T3: post-fire", "first capture after fire")
+    fig.savefig(OUT / "fig_overview.pdf", bbox_inches="tight", dpi=300)
+    fig.savefig(OUT / "fig_overview.png", dpi=200, bbox_inches="tight")
+    print("[OK]", OUT / "fig_overview.pdf")
+
+
+if __name__ == "__main__":
+    overview()
