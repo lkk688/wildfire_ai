@@ -126,6 +126,24 @@ def prefire_table(macros):
     macros["ceilRawPair"] = f3(md_table_value(EXP / "missingness_ablation.md", "raw (Unknown", 3))
     macros["allPairsMissOnly"] = f3(md_table_value(EXP / "missingness_ablation.md", "missing_only", 3))
     macros["allPairsRandom"] = f3(md_table_value(EXP / "missingness_ablation.md", "values_random_imputed", 3))
+    ptp = EXP / "pair_trained_baseline.json"
+    ptb = json.loads(ptp.read_text()) if ptp.exists() else None
+    if ptb:
+        macros["rankerTest"] = f3(ptb["image (DINOv2, 3 scales)"]["test"]["pair_acc"])
+        macros["rankerVal"] = f3(ptb["image (DINOv2, 3 scales)"]["val"]["pair_acc"])
+        macros["rankerMetaVal"] = f3(ptb["metadata"]["val"]["pair_acc"])
+        macros["rankerNPairs"] = str(ptb["n_train_pairs"])
+        macros["rankerNEvents"] = str(ptb["n_train_events"])
+    pfp = EXP / "prefire_sft_Qwen3.5-4B" / "log.json"
+    pfl = json.loads(pfp.read_text()).get("final") if pfp.exists() else None
+    if pfl:
+        lg = json.loads(pfp.read_text())
+        macros["preLoraOne"] = f3(pfl["T1_auroc"])
+        macros["preLoraTwo"] = f3(pfl["T2_test_pair_acc"])
+        macros["preLoraVal"] = f3(pfl["T2_val_pair_acc"])
+        macros["preLoraBaseOne"] = f3(lg["base"]["T1_auroc"])
+        macros["preLoraBaseTwo"] = f3(lg["base"]["T2_test_pair_acc"])
+        macros["preLoraN"] = f"{lg['n_train']:,}".replace(",", "{,}")
     macros.update({"refMetaPair": f3(pref_meta), "refDinoAuc": f3(emb_d["score"]), "refDinoPair": f3(emb_p["score"]),
                    "ceilValuePair": f3(miss_rand_pair), "ceilMissPair": f3(miss_only_pair),
                    "refMetaAuc": f3(tmeta["auroc"])})
@@ -150,6 +168,10 @@ def prefire_table(macros):
                       f3(ref["H6 tabular prefire_meta (train-only) pair acc"])]) + r" \\",
           " & ".join(["Frozen DINOv2 + LR", f3(emb_d["score"]), "--", f3(emb_p["score"]), "--", "--",
                       f3(ref["H7 DINOv2 head pair acc confirm_pairs"])]) + r" \\",
+          *([" & ".join(["DINOv2 ranker, trained on 2019--23 pairs", "--", "--", f3(ptb["image (DINOv2, 3 scales)"]["test"]["pair_acc"]),
+                         "--", "--", f3(ptb["image (DINOv2, 3 scales)"]["val"]["pair_acc"])]) + r" \\"] if ptb else []),
+          *([" & ".join(["Qwen3.5-4B + LoRA, pre-fire", f3(pfl["T1_auroc"]), "--", f3(pfl["T2_test_pair_acc"]), "--", "--",
+                         f3(pfl["T2_val_pair_acc"])]) + r" \\"] if pfl else []),
           " & ".join([r"Oracle: attribute values$^\dagger$", "--", "--", f"{f3(miss_rand_pair)}--{f3(miss_mode_pair)}", "--", "--", "--"]) + r" \\",
           " & ".join([r"Oracle: missingness pattern only$^\dagger$", "--", "--", f3(miss_only_pair), "--", "--", "--"]) + r" \\",
           r"\bottomrule", r"\end{tabular}",
@@ -310,7 +332,9 @@ def main() -> None:
                 bb[r["global_id"]] = r
         ok = [r for r in bb.values() if r.get("parse_ok")]
         return roc_auc_score([r["label"] == "Destroyed" for r in ok], [r["p_destroyed"] for r in ok]) if len(ok) > 100 else None
-    for run, ev, m in [("pilot_sonnet_diag", "image_masked", "maskSonnetPre"), ("postfire_sonnet", "postfire_masked", "maskSonnetPost"),
+    for run, ev, m in [("noname_pre_sonnet", "image", "nonamePre"), ("noname_pf_sonnet", "postfire_image", "nonamePost"),
+                       ("pf_test_claude_sonnet_5_5", "postfire_image", "namedPostSub"),
+                       ("pilot_sonnet_diag", "image_masked", "maskSonnetPre"), ("postfire_sonnet", "postfire_masked", "maskSonnetPost"),
                        ("postfire_sonnet", "postfire_image", "posctlSonnet"), ("pilot_qwen38_diag", "image_masked", "maskQwenPre"),
                        ("postfire_qwen38", "postfire_masked", "maskQwenPost"), ("postfire_qwen38", "postfire_image", "posctlQwen")]:
         v = vauc(run, ev)
