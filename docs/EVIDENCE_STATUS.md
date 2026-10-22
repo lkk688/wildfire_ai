@@ -23,7 +23,7 @@ the 50 cases used to build rules/targets) · **Demo** (UI or mechanism illustrat
 | "Verifiable physical reward" | Not reliable | 10/10 adversarial probes fail (negation, unknown labels, keyword spam, absolute-immunity physics) | `output/audits/reward_reliability_audit.json` |
 | 100K multimodal research dataset | Planned | 132,522 DINS records downloaded; 90,005 residential with binary label; usable *paired, time-valid* subset still being measured | `output/data_inventory/` |
 | "Pre-fire" imagery (WB_2020_R01) | Unverified for dev set | Release date ≠ capture date (e.g. a Quail case: release 2020-05, capture 2018-08-12). Old builder silently fell back to *current* imagery on tile errors (removed) | `src/vlm_benchmark/imagery_provenance.py` |
-| Literature: DisasterM3 "NeurIPS 2024", FIRE-VLM venue/numbers | Incorrect | DisasterM3 is NeurIPS 2025 D&B; FIRE-VLM is a 2026 preprint (arXiv 2601.03449) | Review 1019 §4 |
+| Literature: DisasterM3 "NeurIPS 2024", FIRE-VLM "NeurIPS 2024, 34% lower tracking error" | Incorrect | DisasterM3 is NeurIPS 2025 D&B. FIRE-VLM (Webb et al.) is **WACV 2026 Workshops (CV4EO)** (earlier arXiv 2601.03449): PPO UAV fire-front tracking with CLIP potential-based reward shaping, evaluated only in a UE5/AirSim digital twin; reports up to 6× faster time-to-detection, no "34%" figure | Review 1019 §4; full text read 2026-10-22 |
 
 ## 2. New infrastructure (Weeks 1–2)
 
@@ -137,6 +137,8 @@ run; no analysis rule changed.
 | Scale (9B vs 4B, same recipe): small, not significant gain (0.903 vs 0.892, Δ +0.011 [−0.003, +0.023]); 9B base is *worse* than 4B base before SFT (0.709 vs 0.762) | `postfire/comparison.md` |
 | Output-form value over a frozen linear head: no selective-prediction advantage (AURC Δ ≈ 0); 5-level grading advantage borderline (9B QWK lower bound +0.0001; 4B not met); minor/major levels unrecognisable for every model | `postfire/output_value.md` |
 
+| Evaluation protocol inflates pre-fire risk scores far more than post-fire recognition (exploratory) | random building split vs event/time split: pre-fire metadata 0.712 vs 0.551 (+0.161; same-fire training alone 0.697); post-fire DINOv2 LP 0.933 vs 0.881 (same-fire training 0.888 ≈ no leak) (`split_inflation.md`) |
+
 **Level 2 — real numbers, interpretation or generality open**
 
 | Claim | Status |
@@ -150,7 +152,13 @@ run; no analysis rule changed.
 | DINS points miss structures | inferred from Sonnet's systematically shorter distances; not checked against footprints |
 | Mechanism of the low ceiling (decisive features invisible from nadir; ember stochasticity; suppression) | hypothesis consistent with data, not tested |
 
-**Level 3 — external literature numbers**: verify each against the original paper before citing (not checked in this session).
+**Level 3 — external literature numbers**: verify each against the original paper before citing. Verified from full text (2026-10-22):
+
+| Paper | What it does | Evaluation / caveats | Relation to us |
+|---|---|---|---|
+| Chen et al., *A Simulation-Grounded Agentic VLM Framework for Wildfire Monitoring and Reporting*, arXiv 2610.02451 (under review) | SimFire (Rothermel, LANDFIRE) → Blender proxy → controllable video generation → simulator-labelled video memory; training-free multi-agent VLM retrieval + reporting | Held-out **generated** episodes: 51.5% exact 4-tag vs 22.6% direct VLM; 77.3% on 6 simulator fields; cross-generator drops to 41–44%; real UAV only for smoke/fire detection and visible area; authors note metadata-conditioned prompts may leak tag cues | Sim-to-sim; its gain comes mostly from retrieval of labelled exemplars (direct-visual agent alone 66.8%). We test the retrieval idea on real outcomes (POSTFIRE_TASK_PLAN §10) |
+| Ayanzadeh et al., *WildfireVLM*, arXiv 2602.13305 | YOLOv12 fire/smoke detection on 3,771 Landsat/GOES patches + GPT-4o / Claude 3.5 risk narratives | Random 70/15/15 patch split; narratives scored 1–10 by an LLM judge (7.03 vs 6.16), no ground-truth risk labels | "Detect then narrate"; contrast for protocol: random splits and LLM-as-judge (cf. `split_inflation.md`) |
+| Webb et al., *FIRE-VLM*, WACV 2026 Workshops (CV4EO) | PPO UAV control in a DEM/LANDFIRE/CAWFE digital twin; CLIP ViT-B/32 prompt similarity as potential-based reward shaping + quadrant direction bonus | Simulation only; ablations only (no external baselines), N=5 runs; prompt wording changes the reward | Principled use of a noisy VLM signal (shaping, not truth); a control task, not ours |
 
 **Level 4 — reasoning only, no data**: post-fire SFT closes Qwen's gap; street-level view adds to nadir; calibration/abstention as differentiator; decision-time advice.
 
