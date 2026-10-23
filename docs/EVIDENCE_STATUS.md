@@ -170,7 +170,8 @@ run; no analysis rule changed.
 | Score (AUROC for high loss; within-fire pair accuracy) | All test fires | 20 WUI fires | Eaton + Palisades |
 |---|---|---|---|
 | WorldCover vegetation within 1 km (no fitting) | .44 / .39 | .79 / .63 | .41 / .38 |
-| Assessor aggregates, HGB fitted on 2019–23 cells | .66 / .64 | .79 / .58 | .62 / .64 |
+| Assessor aggregates, HGB fitted on 402 cells from 2019–23 fires | .64 / .64 | .76 / .60 | .63 / .64 |
+| Frozen DINOv2 linear probe on the same z16 crops, same training cells | .57 / .57 | .68 / .56 | .59 / .57 |
 | Sonnet, zero-shot | .45 / .39 | .67 / .57 | .45 / .38 |
 | Qwen3.8-27B, zero-shot | .51 / .45 | .59 / .57 | .50 / .44 |
 
