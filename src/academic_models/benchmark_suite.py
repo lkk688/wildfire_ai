@@ -69,6 +69,10 @@ class AcademicBenchmarkRunner:
         3. Google NDWS Neural Surrogate (ConvNet baseline)
         4. Commercial AI Cat-Model Proxy (Bellwether / Technosylva)
         """
+        # AUDIT 2026-10-22: the "Google NDWS (ConvNet)" row below is a hand-drawn blurred ellipse (no network, no
+        # weights), its latency is floored at 8.5 ms, and the "Commercial SOTA (Bellwether/Technosylva)" row is hard-coded
+        # constants. The other rows score the level-set solver against its own output on synthetic terrain. The API
+        # endpoint now returns HTTP 410; nothing here is an empirical benchmark.
         grid_shape = (100, 100)
         center = (50, 50)
         ignitions = [center]
@@ -214,6 +218,8 @@ class AcademicBenchmarkRunner:
         3. Pure Data-Driven AI (Google NDWS / Bellwether Prior Proxy)
         4. Proposed VLM-Assimilated Physics (Rothermel PDE + CA with VLM spatial parameter grids)
         """
+        # AUDIT 2026-10-22: rows 3-4 use label-generated Bellwether probabilities and Zone 0 text, and read the
+        # ground-truth `defensive_actions` field; time of arrival is set from the label. Do not report these numbers.
         from src.academic_models.vlm_physics_bridge import VLMPhysicsBridge
 
         if catalog_items is None:

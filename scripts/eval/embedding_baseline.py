@@ -31,6 +31,8 @@ sys.path.insert(0, str(ROOT))
 from scripts.eval.vlm_metrics import _cluster_boot  # noqa: E402
 
 SPL = ROOT / "output" / "splits"
+# main T2 set (403 pairs); the larger XL set is evaluated separately in c1_scaleup.py
+MAIN_PAIR_FILES = [SPL / "pairs_test.jsonl", SPL / "pairs_test_large.jsonl"]
 OUT = ROOT / "output" / "experiments" / "embedding_baseline"
 
 
@@ -41,7 +43,7 @@ def records():
             r = json.loads(line)
             if r["imagery"]["accepted"]:
                 recs[r["global_id"]] = r
-    pairs = [json.loads(line) for f in sorted(SPL.glob("pairs_test*.jsonl")) for line in f.read_text().splitlines()]
+    pairs = [json.loads(line) for f in MAIN_PAIR_FILES for line in f.read_text().splitlines()]
     for q in pairs:
         for side in ("destroyed", "survived"):
             q[side]["split"] = "pairs"

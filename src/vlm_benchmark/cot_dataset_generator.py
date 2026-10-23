@@ -1,4 +1,9 @@
 """
+DO NOT TRAIN ON THIS OUTPUT (audit 2026-10-22). The 'gold' reasoning traces are templated from the true outcome
+label, the ground-truth ignition point and defensive actions, with physics parameters fixed by label (alpha_fuel
+1.35/0.25, P_spotting 0.82/0.05) and silent imputations ('Stucco', '<= 1/8"', 1995). Training on them teaches label
+leakage, not reasoning.
+
 Multi-Modal Visual-CoT Dataset Generator for Wildfire Spatial Reasoning
 Generates verified multi-phase Chain-of-Thought (Visual-CoT) instruction tuning
 and post-training datasets pairing CAL FIRE DINS forensics with multi-scale imagery.

@@ -153,7 +153,7 @@ class AIConfig:
         model = cls.get_model()
         key = cls.get_api_key()
         has_key = bool(key)
-        masked_key = f"{key[:6]}...{key[-4:]}" if len(key) > 10 else ("Configured" if has_key else "Missing")
+        masked_key = "Configured" if has_key else "Missing"  # never expose key characters to the UI
 
         return {
             "provider": provider,

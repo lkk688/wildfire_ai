@@ -1,4 +1,9 @@
 """
+SIMULATION ONLY -- NOT RESULTS (audit 2026-10-22). Every 'SFT / RLVR / WildfireReason' prediction in this module is
+generated from the TRUE outcome label plus a deterministic seed (e.g. 'Destroyed if is_destroyed or seed < 88'), and
+'WildfireReason' copies the ground-truth ignition locus. Its numbers measure nothing. The API endpoint that served it
+now returns HTTP 410.
+
 RLVR / GRPO Post-Training Pipeline & Ablation Runner for Wildfire Reasoning
 Simulates and evaluates Group Relative Policy Optimization (GRPO) with
 verifiable physical reward functions on the CAL FIRE DINS multimodal benchmark.

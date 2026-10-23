@@ -85,9 +85,11 @@ def summarize_run(raw_path: Path) -> dict:
 
     per_cond = {}
     for (e, c), rs in sorted(conds.items()):
-        ok = [r for r in rs if r.get("parse_ok")]
+        # intention-to-treat: an unparsed answer counts as p = 0.5 (no information), it is not dropped
+        ok = rs
+        n_unparsed = sum(not r.get("parse_ok") for r in rs)
         y = np.array([r["label"] == "Destroyed" for r in ok], dtype=int)
-        p = np.array([r["p_destroyed"] for r in ok], dtype=float)
+        p = np.array([r["p_destroyed"] if r.get("parse_ok") else 0.5 for r in ok], dtype=float)
         ev = np.array([r["event"] for r in ok])
         m = binary_metrics(y, p) if len(ok) else {}
         if len(ok) and len(set(y)) == 2:
@@ -100,7 +102,7 @@ def summarize_run(raw_path: Path) -> dict:
             if len(set(y[sel])) == 2:
                 per_ev[e_name] = {"n": int(sel.sum()), "auroc": binary_metrics(y[sel], p[sel])["auroc"],
                                   "FPR": binary_metrics(y[sel], p[sel])["FPR"]}
-        m.update({"n_requested": len(rs), "n_parsed": len(ok),
+        m.update({"n_requested": len(rs), "n_parsed": len(rs) - n_unparsed,
                   "parse_fail_rate": 1 - len(ok) / len(rs) if rs else float("nan"), "per_event": per_ev})
         per_cond[f"{e}|{c}"] = m
 

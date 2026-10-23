@@ -25,7 +25,7 @@ class DINSBaselineEvaluator:
             self.endpoint_url = endpoint_url or "https://api.anthropic.com/v1/messages"
             self.api_key = api_key or self._get_claude_api_key()
         elif self.is_qwen:
-            default_qwen_url = os.environ.get("TB_REMOTE_QWEN_URL", "http://REMOTE_HOST:28000/v1")
+            default_qwen_url = os.environ.get("TB_REMOTE_QWEN_URL", "")  # set in the environment; never hard-coded
             if not default_qwen_url.endswith("/chat/completions"):
                 default_qwen_url = default_qwen_url.rstrip("/") + "/chat/completions"
             self.endpoint_url = endpoint_url or default_qwen_url
@@ -271,6 +271,8 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
         results = []
         tp, fp, tn, fn = 0, 0, 0, 0
         locus_correct = 0
+        locus_den = 0  # cases with a specific ground-truth ignition locus
+        n_failed = 0
         hallucination_cases = 0
 
         completed_count = 0
@@ -282,7 +284,13 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
                 try:
                     res = future.result()
                     if not res.get("success", False):
-                        print(f"[{completed_count}/{len(items)}] Case {item['id']} FAILED: {res.get('error')}")
+                        # Audit 2026-10-22: a failed call counts as a wrong answer instead of leaving the denominator
+                        n_failed += 1
+                        if item.get("survival_label") == "Destroyed":
+                            fn += 1
+                        else:
+                            fp += 1
+                        print(f"[{completed_count}/{len(items)}] Case {item['id']} FAILED (counted wrong): {res.get('error')}")
                         continue
 
                     mo = res["model_output"]
@@ -300,8 +308,11 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
                         else:
                             fp += 1
 
-                    if mo["locus_match"]:
-                        locus_correct += 1
+                    gt_locus = str(gt.get("ignition_point") or item.get("ignition_point") or "").lower()
+                    if gt_locus and gt_locus not in ("none", "unknown"):
+                        locus_den += 1
+                        if mo["locus_match"]:
+                            locus_correct += 1
                     if mo["hallucinated_feature"]:
                         hallucination_cases += 1
 
@@ -344,7 +355,9 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
                 "fpr_survived": fp_rate,
                 "false_alarm_ratio": round(fp / (tp + fp), 4) if (tp + fp) > 0 else 0.0,
                 "miss_rate_FN": fn_rate,
-                "locus_attribution_accuracy": round(locus_correct / max(tp, 1), 4),
+                "locus_attribution_accuracy": round(locus_correct / locus_den, 4) if locus_den else None,
+                "locus_cases": locus_den,
+                "n_failed_calls_counted_wrong": n_failed,
                 "hallucination_rate": round(hallucination_cases / max(total, 1), 4),
             },
             "cases": results,
@@ -366,7 +379,7 @@ Followed by a concise 1-2 paragraph physical vulnerability and fire spread analy
         print(f"  * F1-Score:               {f1:.4f}")
         print(f"  * Confusion Matrix:       TP={tp}, FP={fp}, TN={tn}, FN={fn}")
         print(f"  * 'Everything Burns' FP:  {fp}/{tn+fp} ({fp_rate * 100:.1f}%) [FPR = FP/(FP+TN)]")
-        print(f"  * Locus Attribution Acc:  {locus_correct}/{max(tp, 1)} ({eval_summary['metrics']['locus_attribution_accuracy'] * 100:.1f}%)")
+        print(f"  * Locus Attribution Acc:  {locus_correct}/{locus_den} (cases with a specific ground-truth locus)")
         print(f"  * Feature Hallucination:  {hallucination_cases}/{total} ({eval_summary['metrics']['hallucination_rate'] * 100:.1f}%)")
         print(f"  * Saved JSON Artifact:    {results_path}")
         print("=" * 60 + "\n")

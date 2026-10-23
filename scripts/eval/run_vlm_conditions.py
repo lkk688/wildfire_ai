@@ -173,7 +173,9 @@ class Client:
             self.url = endpoint or "https://api.anthropic.com/v1/messages"
             self.key = api_key or os.environ.get("CLAUDE_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
         elif "qwen" in model.lower():
-            base = endpoint or os.environ.get("TB_REMOTE_QWEN_URL", "http://REMOTE_HOST:28000/v1")
+            base = endpoint or os.environ.get("TB_REMOTE_QWEN_URL")
+            if not base:
+                raise SystemExit("Set TB_REMOTE_QWEN_URL (OpenAI-compatible base URL) or pass --endpoint for Qwen models.")
             self.url = base if base.endswith("/chat/completions") else base.rstrip("/") + "/chat/completions"
             self.key = api_key or os.environ.get("QWEN_REMOTE_KEY", "")
         else:

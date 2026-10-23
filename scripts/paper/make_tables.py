@@ -57,10 +57,11 @@ def pair_acc(run, pair_files, evidence):
             continue
         if r["pair_id"] not in best or r.get("parse_ok"):
             best[r["pair_id"]] = r
-    ok = [r for r in best.values() if r.get("parse_ok")]
-    if len(ok) < 0.9 * len(ids):
+    ok = list(best.values())  # intention-to-treat: unparsed answers count as a tie (0.5)
+    if sum(bool(r.get("parse_ok")) for r in ok) < 0.9 * len(ids):
         return None
-    pc = np.array([r["p_A_destroyed"] if r["destroyed_is"] == "A" else 1 - r["p_A_destroyed"] for r in ok])
+    pc = np.array([(r["p_A_destroyed"] if r["destroyed_is"] == "A" else 1 - r["p_A_destroyed"]) if r.get("parse_ok") else 0.5
+                   for r in ok])
     acc = (pc > 0.5) + 0.5 * (pc == 0.5)
     ev = np.array([r["event"] for r in ok])
     rng = np.random.default_rng(SEED)
@@ -82,6 +83,15 @@ def prefire_table(macros):
     test_pairs = ["pairs_test.jsonl", "pairs_test_large.jsonl"]
     val_pairs = ["confirm_pairs.jsonl"]
     conf = json.loads((EXP / "confirmatory" / "results.json").read_text())
+    h2 = conf["H2 confirm_pairs_sonnet: image pair acc > 0.5"]
+    c1j = json.loads((EXP / "c1_scaleup.json").read_text()) if (EXP / "c1_scaleup.json").exists() else {}
+    nlines = lambda fs: sum(len((SPL / f).read_text().splitlines()) for f in fs)  # noqa: E731
+    nn = {"t1": direct("pilot_sonnet_diag")[0]["n"], "pairs": nlines(test_pairs), "rep_pairs": nlines(val_pairs),
+          "rep_t1": json.loads((EXP / "vlm_conditions" / "confirm_direct_sonnet" / "summary.json").read_text())
+          ["conditions"]["image|neutral"]["n"],
+          "h2_ci": f"[{f3(h2['ci95'][0])}, {f3(h2['ci95'][1])}]",
+          "xl_pairs": c1j.get("n_pairs", "--"), "xl_t1": c1j.get("n_t1", "--"), "xl_fires": len(c1j.get("pair_events", [])),
+          "xl_prev": f"{100 * c1j['tabular']['T1']['pos_rate']:.1f}" if c1j else "--"}
     rows = []
     for name, d_run, p_run, cd_run, cp_run in [
         ("Claude Sonnet 5.5", "pilot_sonnet_diag", "pairs_sonnet", "confirm_direct_sonnet", "confirm_pairs_sonnet"),
@@ -197,13 +207,15 @@ def prefire_table(macros):
           " & ".join([r"Oracle: missingness pattern only$^\dagger$", "--", "--", f3(miss_only_pair), "--", "--", "--", "--", "--"]) + r" \\",
           r"\bottomrule", r"\end{tabular}}",
           r"\caption{\textbf{Pre-fire structure loss.} Zero-shot VLMs on time-verified pre-fire crops of held-out 2024--25 fires "
-          r"(238 balanced buildings; 403 same-fire neighbour pairs 15--100\,m apart), and pre-registered replication on untouched "
-          r"2019--23 validation fires (220 buildings; 289 pairs). $\Delta$ vs.\ mismatched: AUROC with the building's own image minus "
+          rf"({nn['t1']} balanced buildings; {nn['pairs']} same-fire neighbour pairs 15--100\,m apart), and pre-registered replication on untouched "
+          rf"2019--23 validation fires ({nn['rep_t1']} buildings; {nn['rep_pairs']} pairs). $\Delta$ vs.\ mismatched: AUROC with the building's own image minus "
           r"with another building's image from the same fire. Brackets: 95\% fire-event cluster bootstrap. "
-          r"$^\dagger$HGB on post-fire inspector records (not available before a fire), same 403 pairs: attribute values with "
+          rf"$^\dagger$HGB on post-fire inspector records (not available before a fire), same {nn['pairs']} pairs: attribute values with "
           r"unknowns imputed randomly (lower) or by the mode (upper; partly encodes missingness), vs.\ only the pattern of missing fields. "
-          r"Replication intervals are fire-event bootstrap; the pre-registered pair-level interval for Sonnet is [.500, .611]. "
-          r"Larger test sets: 628 further pairs (3 fires) and 701 buildings sampled at natural prevalence (42.5\% destroyed) from 2024--25 fires.}",
+          rf"Replication intervals are fire-event bootstrap; the pre-registered pair-level interval for Sonnet is {nn['h2_ci']}. "
+          r"Unparsed VLM answers count as $p{=}0.5$ (intention-to-treat). "
+          rf"Larger test sets: {nn['xl_pairs']} further pairs ({nn['xl_fires']} fires) and {nn['xl_t1']} buildings sampled at natural prevalence "
+          rf"({nn['xl_prev']}\% destroyed) from 2024--25 fires.}}",
           r"\label{tab:prefire}", r"\end{table*}"]
     return "\n".join(L)
 
@@ -369,8 +381,9 @@ def main() -> None:
             r = json.loads(line)
             if r["evidence"] == ev and (r["global_id"] not in bb or r.get("parse_ok")):
                 bb[r["global_id"]] = r
-        ok = [r for r in bb.values() if r.get("parse_ok")]
-        return roc_auc_score([r["label"] == "Destroyed" for r in ok], [r["p_destroyed"] for r in ok]) if len(ok) > 100 else None
+        ok = list(bb.values())  # intention-to-treat: unparsed -> 0.5
+        return (roc_auc_score([r["label"] == "Destroyed" for r in ok],
+                              [r["p_destroyed"] if r.get("parse_ok") else 0.5 for r in ok]) if len(ok) > 100 else None)
     for run, ev, m in [("noname_pre_sonnet", "image", "nonamePre"), ("noname_pf_sonnet", "postfire_image", "nonamePost"),
                        ("pf_test_claude_sonnet_5_5", "postfire_image", "namedPostSub"),
                        ("pilot_sonnet_diag", "image_masked", "maskSonnetPre"), ("postfire_sonnet", "postfire_masked", "maskSonnetPost"),

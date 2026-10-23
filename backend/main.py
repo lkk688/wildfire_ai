@@ -6,6 +6,7 @@ USGS 3DEP Terrain Slope, NOAA HRRR live weather, Microsoft Building Footprints,
 San Mateo & San Jose multi-region support, and 130ft radiant heat corridor queries.
 """
 
+import os
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
@@ -72,6 +73,35 @@ class AcademicSimulationRequest(BaseModel):
     grid_size: int = 80
     spotting: bool = True
 
+
+
+# Audit 2026-10-22: these endpoints serve synthetic or hard-coded values (not real feeds). Every JSON object they return
+# is tagged so no client can mistake it for data.
+SYNTHETIC_PATHS = {
+    "/api/layers/buildings", "/api/layers/calfire-perimeters", "/api/layers/firms-hotspots", "/api/layers/fuel-moisture",
+    "/api/layers/terrain-slope", "/api/layers/calfire", "/api/weather/live", "/api/query-corridor", "/api/model-evaluation",
+}
+
+
+@app.middleware("http")
+async def tag_synthetic(request, call_next):
+    import json as _json
+    from starlette.responses import Response
+    resp = await call_next(request)
+    if request.url.path not in SYNTHETIC_PATHS or "application/json" not in resp.headers.get("content-type", ""):
+        return resp
+    body = b"".join([chunk async for chunk in resp.body_iterator])
+    try:
+        data = _json.loads(body)
+        if isinstance(data, dict):
+            data["synthetic"] = True
+            data["provenance_note"] = "Synthetic or hard-coded demo values; not a real data feed (audit 2026-10-22)."
+        body = _json.dumps(data).encode()
+    except ValueError:
+        pass
+    headers = {k: v for k, v in resp.headers.items() if k.lower() != "content-length"}
+    headers["X-Data-Provenance"] = "synthetic-demo"
+    return Response(content=body, status_code=resp.status_code, headers=headers, media_type="application/json")
 
 
 @app.get("/")
@@ -283,12 +313,21 @@ def switch_ai_provider(req: SwitchProviderRequest):
     Dynamically hot-swap the active LLM provider and model configuration
     (e.g., minimax, ollama, openai, deepseek, vllm, or custom endpoint).
     """
+    # Security (audit 2026-10-22): this endpoint is unauthenticated and CORS is open, so a network caller could
+    # redirect the server's API key to a host of their choice. It is disabled unless explicitly enabled for local
+    # use, and it never accepts a base_url or api_key from the request (only preset providers and model names).
+    if os.environ.get("WILDFIRE_DEMO_ALLOW_PROVIDER_SWITCH") != "1":
+        raise HTTPException(status_code=403, detail="Provider switching is disabled "
+                            "(set WILDFIRE_DEMO_ALLOW_PROVIDER_SWITCH=1 for local use).")
+    if req.base_url or req.api_key:
+        raise HTTPException(status_code=400, detail="base_url and api_key cannot be set over the API; "
+                            "configure them via environment variables.")
+    if req.provider.lower().strip() not in AIConfig.PRESETS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider preset: {req.provider}")
     try:
         updated_status = AIConfig.update_provider_config(
             provider=req.provider,
             model=req.model,
-            base_url=req.base_url,
-            api_key=req.api_key,
         )
         return {"success": True, "status": updated_status}
     except Exception as e:
@@ -362,11 +401,8 @@ def get_academic_benchmark_results():
     Executes and returns the standardized academic benchmark evaluation comparing
     Level-Set PDE, Stochastic CA, Google NDWS, and Commercial Cat-Models.
     """
-    try:
-        results = AcademicBenchmarkRunner.run_comprehensive_benchmark()
-        return results
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Audit 2026-10-22: Removed: the commercial and NDWS rows were hard-coded constants and a hand-drawn ellipse; the rest scored a solver against its own output on synthetic terrain.
+    raise HTTPException(status_code=410, detail="Removed: the commercial and NDWS rows were hard-coded constants and a hand-drawn ellipse; the rest scored a solver against its own output on synthetic terrain.")
 
 
 @app.get("/api/academic/vlm-coupling-benchmark")
@@ -379,11 +415,8 @@ def get_vlm_physics_coupling_benchmark():
     4. Proposed VLM-Assimilated Physics (Rothermel PDE + CA)
     across the 50 CAL FIRE DINS ground-truth parcels.
     """
-    try:
-        results = AcademicBenchmarkRunner.evaluate_vlm_physics_coupling()
-        return results
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Audit 2026-10-22: Removed: the coupled rows used ground-truth defensive actions and label-generated Bellwether/Zone 0 inputs.
+    raise HTTPException(status_code=410, detail="Removed: the coupled rows used ground-truth defensive actions and label-generated Bellwether/Zone 0 inputs.")
 
 
 @app.post("/api/academic/simulate")
@@ -524,12 +557,8 @@ def run_vlm_live_predict(req: VLMPredictRequest):
 @app.get("/api/vlm/rlvr-reasoning-benchmark")
 def get_rlvr_reasoning_benchmark():
     """Retrieve RLVR / GRPO post-training ablation benchmark across 50 DINS cases."""
-    try:
-        from src.vlm_benchmark.rlvr_post_training_runner import RLVRPostTrainingRunner
-        runner = RLVRPostTrainingRunner()
-        return runner.run_ablation_benchmark()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Audit 2026-10-22: Removed: every prediction in this benchmark was generated from the true outcome label (simulation, not results).
+    raise HTTPException(status_code=410, detail="Removed: every prediction in this benchmark was generated from the true outcome label (simulation, not results).")
 
 
 @app.post("/api/vlm/evaluate-reasoning-reward")

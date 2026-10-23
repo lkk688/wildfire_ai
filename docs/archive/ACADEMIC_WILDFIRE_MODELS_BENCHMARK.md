@@ -1,3 +1,20 @@
+> **ARCHIVED (2026-10-22). Not a source of results.** Audit of this file (docs audit, 2026-10-22):
+> - The "benchmark" uses a synthetic sine-wave canyon (not real San Bruno terrain) and scores models against the
+>   level-set solver's own output, so the solver scores 1.0 by construction. It is a mechanism demo, not an empirical benchmark.
+> - The **"Commercial SOTA (Bellwether / Technosylva)" row was hard-coded constants** (no model was run; Bellwether does not
+>   model fire spread). The **"Google Research NDWS (ConvNet)" row was a hand-drawn blurred ellipse**, not a trained network.
+>   Both rows are struck below.
+> - `rothermel_level_set.py` is a simplified surrogate, not Rothermel's model (I_R, ξ, ρ_b, ε, Q_ig are never computed;
+>   Q_ig = 581 + 2594 M_f is in Btu/lb, not kJ/kg). No term enforces energy or mass conservation.
+> - Citations: NDWS is Huot et al., IEEE TGRS 2022 (arXiv 2112.02447), not NeurIPS 2021, and its channels are elevation,
+>   wind, temperature, humidity, precipitation, PDSI, NDVI, ERC, population density and the previous fire mask (no Anderson
+>   fuel flags); the paper uses weighted cross-entropy, not a mandated Focal + Dice loss. WildfireSpreadTS is Gerard, Zhao &
+>   Sullivan, NeurIPS 2023 D&B (a 23-channel dataset). The L/B formula is not Alexander (1985), and the slope factor is not
+>   Alexandridis et al. (2008).
+> - Unsupported: the I-280 "jumping" claims, the "500 m ember ignition in the 2010 San Bruno explosion" (that event was a
+>   gas-pipeline explosion), and "10,000 scenarios in under two minutes" (≈8–17 min at the measured latencies).
+> Current evidence: `docs/EVIDENCE_STATUS.md`.
+
 # Academic Frontier Wildfire Prediction Models: Theoretical Foundations, Benchmarks, and Local Implementation Guide
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
@@ -146,8 +163,8 @@ We conducted standardized benchmark runs on the **San Bruno Crestmoor Canyon Top
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- | :--- |
 | **Rothermel Level-Set PDE** | Continuous Physical PDE | **1.0000** | **1.0000** | **1.0000** | 37.38 ha | **46.9 ms** | **Strict Energy & Mass Conservation** | Continuous front (Monte-Carlo coupling) |
 | **Alexandridis Stochastic CA** | Discrete Cellular Automata | **0.3939** | **0.3939** | **0.5651** | 46.14 ha | **104.7 ms** | Empirical probabilistic | **Native Weibull long-range jumps** |
-| **Google Research NDWS (ConvNet)** | Deep Learning Surrogate | **0.2189** | **0.2189** | **0.3591** | 8.23 ha | **136.6 ms** | Non-physical black-box | Implicit training satellite labels |
-| **Commercial SOTA (Bellwether / Technosylva)** | Hybrid Continental ML | **0.7650** | **0.7650** | **0.8670** | 6.84 ha | 1,500.0 ms | Constrained by operational NWP | Atmospheric plume injection |
+| ~~Google Research NDWS (ConvNet)~~ | *removed: was a hand-drawn ellipse, not a model* | – | – | – | – | – | – | – |
+| ~~Commercial SOTA (Bellwether / Technosylva)~~ | *removed: hard-coded constants, no model was run* | – | – | – | – | – | – | – |
 
 *All metrics computed via `src.academic_models.benchmark_suite.calculate_spatial_metrics` on the local testbed.*
 

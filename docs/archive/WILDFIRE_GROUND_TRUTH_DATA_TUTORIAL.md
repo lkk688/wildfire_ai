@@ -1,3 +1,13 @@
+> **ARCHIVED (2026-10-22).** Audit corrections:
+> - "Verified & Downloaded" is not accurate: WildfireSpreadTS is code only (no data), and the DINS files described here are
+>   200- and 100-record samples (the full 132,522-record table is in `calfire_dins/full/`).
+> - DINS has no `DEFENSIBLE_SPACE` field; the roof field is `ROOFCONSTRUCTION`, not `ROOFTYPE`. The descriptive parentheticals
+>   on the DAMAGE tiers are not CAL FIRE definitions (only the percentage bands are).
+> - The MTBS snippet uses wrong column names (real: `incid_name`, `incid_type`, `burnbndac`, `ig_date`).
+> - The "130 ft contagion model evaluation" and the "empirical" spread evaluation are toy examples: the first never applies a
+>   130 ft zone and uses an unsourced $850k per home; the second scores against a hand-drawn rectangle.
+> - WildfireSpreadTS is Gerard et al., NeurIPS 2023 (23 input channels).
+
 # Wildfire Ground-Truth & Benchmark Datasets: Engineering Tutorial & Evaluation Guide
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)

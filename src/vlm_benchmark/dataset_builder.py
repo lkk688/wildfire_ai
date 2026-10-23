@@ -163,15 +163,15 @@ def build_dins_benchmark(
             "eaves": p.get("EAVES") or "Unknown",
             "vent_screen": p.get("VENTSCREEN") or "Unknown",
             "window_pane": p.get("WINDOWPANE") or "Unknown",
-            "deck_on_grade": p.get("DECKPORCHONGRADE") or "None",
-            "deck_elevated": p.get("DECKPORCHELEVATED") or "None",
-            "fence_attached": p.get("FENCEATTACHEDTOSTRUCTURE") or "None",
+            "deck_on_grade": p.get("DECKPORCHONGRADE") or "Unknown",  # missing is not "None" (audit 2026-10-22)
+            "deck_elevated": p.get("DECKPORCHELEVATED") or "Unknown",
+            "fence_attached": p.get("FENCEATTACHEDTOSTRUCTURE") or "Unknown",
             # Ground-Truth Outcome Labels
             "raw_damage": dmg,
             "survival_label": "Destroyed" if ("Destroyed" in dmg or "Major" in dmg) else "Survived",
             "ignition_point": p.get("WHEREFIRESTARTEDONSTRUCTURE") or ("None" if "No Damage" in dmg else "Unknown"),
             "ignition_source": p.get("WHATDIDFIRESTARTFROM") or ("None" if "No Damage" in dmg else "Unknown"),
-            "defensive_actions": p.get("DEFENSIVEACTIONS") or "None",
+            "defensive_actions": p.get("DEFENSIVEACTIONS") or "Unknown",
         }
 
         if item["survival_label"] == "Destroyed":

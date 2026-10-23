@@ -1,3 +1,11 @@
+> **ARCHIVED (2026-10-22). Superseded by the evidence in `docs/EVIDENCE_STATUS.md`; its main claims were refuted.**
+> - "Frontier VLMs fail catastrophically at vision": refuted. Post-fire damage recognition reaches AUROC ≈ 0.96 (Sonnet).
+> - "Absolute binary ground truth / unfair advantage": DINS labels have a building-level pre-fire ceiling of about 0.63–0.65
+>   pair accuracy, and the keyword "verifiable reward" failed 10/10 probes.
+> - "W-Reason-100K", "first verifiable post-training framework" and "proves OOD generalisation": none of these were built or shown.
+> - Results quoted here (SFT/RLVR 82%/94%, GRPO "training", assimilation MAE 18.0→6.7 min) came from simulations that
+>   generated predictions from the true labels. They are not results.
+
 > **⚠️ Status note (2026-10-19, Review 1019):** Several results in this document are engineering demos, simulations or text-only dev-set runs, not empirical findings (e.g. SFT/RLVR 82%/94%, GRPO "training", assimilation MAE 18.0→6.7 min, "VLM fails at vision"). The current evidence level of every claim is tracked in `docs/EVIDENCE_STATUS.md` (repo root); that file supersedes conflicting numbers here.
 
 # Targeting CVPR with Wildfire AI: Research Feasibility, Frontier Paradigms, and VLM Reasoning Proposal

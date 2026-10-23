@@ -349,7 +349,7 @@ type Lang = 'en' | 'zh';
 const I18N = {
   en: {
     title: 'WildfireReason-VLM',
-    trackBadge: 'CVPR 2026 Frontier Track',
+    trackBadge: 'Legacy demo · development set',
     gtBadge: 'CAL FIRE DINS Ground-Truth',
     subtitle: 'Zero-Shot Forensic Ignition Attribution & Defect Discovery Engine across 4 Frontier Reasoning Models',
     switchToMap: 'Switch to 3D GIS Map',
@@ -435,7 +435,7 @@ const I18N = {
     surroundingVegetation: 'Surrounding Vegetation & Fuels',
     physicalBreachPoint: 'Forensic Failure Point (Locus)',
     firefighterAction: 'Firefighter Tactical Intervention',
-    verifiedGSVBadge: '100% Authentic Google Street View Ground Truth',
+    verifiedGSVBadge: 'Street-level photo (capture date unverified)',
     coverageGapBadge: 'WUI Private Road Coverage Gap',
     coverageGapTitle: 'WUI Ground-Level Street View Coverage Gap',
     coverageGapDesc: 'This parcel is located in a rural WUI fire zone on a private road/driveway (10-22 acres). Google Street View vehicles are legally and physically restricted to public highways and cannot traverse private parcels. In our benchmark, this reflects the realistic operational limitation of ground-level imagery in wildland fire scenarios—making sub-meter aerial satellite orthoimagery and county assessor records indispensable.',
@@ -520,7 +520,7 @@ const I18N = {
   },
   zh: {
     title: 'WildfireReason-VLM 野火视觉多模态推演',
-    trackBadge: 'CVPR 2026 前沿赛道',
+    trackBadge: '旧版演示 · 开发集',
     gtBadge: '加州消防局 DINS 真实物证',
     subtitle: '面向 4 大前沿推理模型的野火零样本致灾归因与建筑缺陷发现推演引擎',
     switchToMap: '切换至 3D GIS 地图',
@@ -597,7 +597,7 @@ const I18N = {
     expertDiagnosisTitle: '专家火场法医缺陷诊断: 前沿模型为何误判 (归因与物理物证复盘)',
     expertSubtitle: '物理因果链审计与实测偏差点剖析 (Case',
     modelDiagnosis: '诊断分析:',
-    recommendation: '视觉微调优化建议 (CVPR 2026):',
+    recommendation: '视觉微调建议（演示）:',
     collapseReasoning: '收起模型研判面板',
     expandReasoning: '展开 4 大模型研判结果',
     hidePanel: '收起研判',
@@ -960,6 +960,12 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
 
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-950 text-slate-100 overflow-y-auto">
+      {/* Audit 2026-10-22: persistent notice that this view is a legacy demo, not a results page */}
+      <div className="bg-amber-500/15 border-b border-amber-500/40 px-6 py-2 text-[11px] text-amber-200">
+        Legacy demo on a 50-case development set (text-only model runs; 25 of 25 survived cases come from one fire).
+        Fields that were generated from the true outcome label (Bellwether, insurance, simulations, assessments) have been
+        removed and show "—". This page is not a source of results; see docs/EVIDENCE_STATUS.md.
+      </div>
       {/* Top Header & Application Bar */}
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
         <div className="flex items-center gap-3">
@@ -1074,7 +1080,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         : 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
                     }`}
                   >
-                    {isSonnet ? 'SOTA Frontier' : isHaiku ? 'Fast CoT' : isQwen ? 'Open vLLM' : 'Commercial CoT'}
+                    {isSonnet ? 'Claude Sonnet' : isHaiku ? 'Claude Haiku' : isQwen ? 'Open vLLM' : 'MiniMax'}
                   </span>
                 </div>
 
@@ -1508,12 +1514,12 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                           <div className="absolute bottom-2 left-2 right-2 bg-slate-950/85 backdrop-blur-md px-2 py-1 rounded text-[10px] font-semibold border border-white/5">
                             {currentCase.survival_label === 'Destroyed' ? (
                               <div className="flex items-center justify-between text-rose-300">
-                                <span className="truncate">🔥 损毁定级：{currentCase.raw_damage || 'Destroyed (>50%)'}</span>
+                                <span className="truncate">🔥 损毁定级：{currentCase.raw_damage ?? '—'}</span>
                                 <span className="text-[9px] font-mono text-rose-400/80 shrink-0 ml-1">重损/全损核定</span>
                               </div>
                             ) : (
                               <div className="flex items-center justify-between text-emerald-300">
-                                <span className="truncate">🛡️ 存活定级：{currentCase.raw_damage || 'No Damage (0%)'}</span>
+                                <span className="truncate">🛡️ 存活定级：{currentCase.raw_damage ?? '—'}</span>
                                 <span className="text-[9px] font-mono text-emerald-400/80 shrink-0 ml-1">有效防守</span>
                               </div>
                             )}
@@ -1615,7 +1621,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                               <span>{t.verifiedGSVBadge}</span>
                             </span>
                             <span className="px-2 py-1 rounded-md text-[11px] font-mono bg-black/75 text-emerald-300 border border-emerald-500/30 backdrop-blur-md">
-                              {currentCase.streetview?.provenance_badge || '100% Real Photo'}
+                              {currentCase.streetview?.provenance_badge ?? '—'}
                             </span>
                           </div>
 
@@ -1670,7 +1676,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                                 <span>{t.coverageGapTitle}</span>
                               </span>
                               <span className="text-[11px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
-                                Lot: {currentCase.assessor_record?.lot_size || 'Rural WUI Parcel'}
+                                Lot: {currentCase.assessor_record?.lot_size ?? '—'}
                               </span>
                             </div>
 
@@ -1868,7 +1874,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                             : `Suburban Residential Subdivision Forensic Analysis (${currentCase.incident} Fire Case #${currentCase.id})`}
                         </span>
                         <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono border border-amber-500/30">
-                          {currentCase.assessor_record?.lot_size || 'Suburban Lot (~18m Width)'}
+                          {currentCase.assessor_record?.lot_size ?? '—'}
                         </span>
                         <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono border border-emerald-500/30">
                           {lang === 'zh' ? '真实街道立面物证' : 'Real Street View Ground Truth'}
@@ -1881,7 +1887,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                               • <b>为什么看到整片小区？</b> 该案例位于奥罗维尔近郊高密度独栋住宅区（Mountain Vista Dr，单户面宽约 18 米）。Zoom 18（航拍跨度 300 米）必然覆盖整条街道与周边房屋。<b>正中心准心光标处即为本案评估目标（{currentCase.street_address || `Case #${currentCase.id}`}）</b>；可点击上方 <b>【2x 特写】</b> 聚焦单栋建筑。
                             </p>
                             <p>
-                              • <b>保险核保与连带易损性重点：</b> 居民区房屋间距仅 10–30 英尺，一栋失火将通过热辐射与木栅栏引发多栋连环起火（骨牌效应）。加州 CDI Title 10 § 2644.9 规定只要实施 Class A 屋顶、防余烬密网和 Zone 0 缓冲，即可获得法定保费折减（当前案例已折减至 <b>${currentCase.insurance_actuarial?.annual_discounted_premium_usd || 5075}/年</b>）。
+                              • <b>保险核保与连带易损性重点：</b> 居民区房屋间距仅 10–30 英尺，一栋失火将通过热辐射与木栅栏引发多栋连环起火（骨牌效应）。加州 CDI Title 10 § 2644.9 规定只要实施 Class A 屋顶、防余烬密网和 Zone 0 缓冲，即可获得法定保费折减（当前案例已折减至 <b>${currentCase?.insurance_actuarial?.annual_discounted_premium_usd ?? '—'}/年</b>）。
                             </p>
                           </>
                         ) : (
@@ -1890,7 +1896,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                               • <b>Why does the aerial view capture an entire subdivision?</b> This parcel is situated in a dense suburban residential tract (Mountain Vista Dr, Oroville; structure frontage width ~18m). Zoom-18 aerial orthoimagery (~300m ground footprint) encompasses the entire street corridor and neighboring properties. <b>The reticle crosshair pinpoints the exact subject property ({currentCase.street_address || `Case #${currentCase.id}`})</b>; use <b>【2x Close-up】</b> to inspect the parcel envelope.
                             </p>
                             <p>
-                              • <b>Insurance Underwriting & Radiant Contagion Focus:</b> With structure setbacks of only 10–30 feet, residential subdivisions face severe structure-to-structure domino contagion. California CDI Title 10 § 2644.9 mandates insurance discounts for hardening (Class A roof, mesh vents, and Zone 0 perimeter), reducing current annual premium to <b>${currentCase.insurance_actuarial?.annual_discounted_premium_usd || 5075}/yr</b> ({currentCase.insurance_actuarial?.total_mitigation_discount_pct || '-12.5%'} savings).
+                              • <b>Insurance Underwriting & Radiant Contagion Focus:</b> With structure setbacks of only 10–30 feet, residential subdivisions face severe structure-to-structure domino contagion. California CDI Title 10 § 2644.9 mandates insurance discounts for hardening (Class A roof, mesh vents, and Zone 0 perimeter), reducing current annual premium to <b>${currentCase?.insurance_actuarial?.annual_discounted_premium_usd ?? '—'}/yr</b> ({currentCase?.insurance_actuarial?.total_mitigation_discount_pct ?? '—'} savings).
                             </p>
                           </>
                         )}
@@ -1963,14 +1969,14 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                           <span className={`text-base font-extrabold ${
                             currentCase.survival_label === 'Destroyed' ? 'text-rose-400' : 'text-emerald-400'
                           }`}>
-                            {currentCase.bellwether_prediction?.burn_probability_1yr_pct || '3.42%'}
+                            {currentCase?.bellwether_prediction?.burn_probability_1yr_pct ?? '—'}
                           </span>
                           <span className="text-[9px] text-slate-400 block">Top 5% Risk Tier</span>
                         </div>
                         <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 text-center">
                           <span className="text-[10px] text-slate-400 block">{t.burnProb5yr}</span>
                           <span className="text-base font-extrabold text-amber-300">
-                            {currentCase.bellwether_prediction?.burn_probability_5yr_pct || '15.8%'}
+                            {currentCase?.bellwether_prediction?.burn_probability_5yr_pct ?? '—'}
                           </span>
                           <span className="text-[9px] text-slate-400 block">5-Yr Cumulative</span>
                         </div>
@@ -1984,32 +1990,32 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                             <span>{t.radiantCorridorTitle}</span>
                           </span>
                           <span className="font-mono text-amber-300 font-bold">
-                            {currentCase.bellwether_prediction?.radiant_corridor_130ft.wind_adjusted_major_axis_meters || 78.4}m Axis
+                            {currentCase?.bellwether_prediction?.radiant_corridor_130ft?.wind_adjusted_major_axis_meters ?? '—'}m Axis
                           </span>
                         </div>
                         <div className="grid grid-cols-2 gap-1.5 text-[10px]">
                           <div className="bg-slate-950/80 p-1.5 rounded">
                             <span className="text-slate-400 block">{t.threatenedStructures}</span>
                             <span className="font-bold text-rose-300">
-                              {currentCase.bellwether_prediction?.radiant_corridor_130ft.threatened_structures_count || 5} Homes
+                              {currentCase?.bellwether_prediction?.radiant_corridor_130ft?.threatened_structures_count ?? '—'} Homes
                             </span>
                           </div>
                           <div className="bg-slate-950/80 p-1.5 rounded">
                             <span className="text-slate-400 block">{t.threatenedValue}</span>
                             <span className="font-bold text-rose-300">
-                              {currentCase.bellwether_prediction?.radiant_corridor_130ft.threatened_property_display || '$3,250,000'}
+                              {currentCase?.bellwether_prediction?.radiant_corridor_130ft?.threatened_property_display ?? '—'}
                             </span>
                           </div>
                           <div className="bg-slate-950/80 p-1.5 rounded">
                             <span className="text-slate-400 block">{t.mitigatedValue}</span>
                             <span className="font-bold text-emerald-300">
-                              {currentCase.bellwether_prediction?.radiant_corridor_130ft.mitigated_saved_display || '$2,665,000'}
+                              {currentCase?.bellwether_prediction?.radiant_corridor_130ft?.mitigated_saved_display ?? '—'}
                             </span>
                           </div>
                           <div className="bg-slate-950/80 p-1.5 rounded">
                             <span className="text-slate-400 block">{t.mitigationRoi}</span>
                             <span className="font-bold text-cyan-300">
-                              {currentCase.bellwether_prediction?.radiant_corridor_130ft.mitigation_roi_multiplier || '3.8x ROI'}
+                              {currentCase?.bellwether_prediction?.radiant_corridor_130ft?.mitigation_roi_multiplier ?? '—'}
                             </span>
                           </div>
                         </div>
@@ -2020,7 +2026,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                           {t.topDriversTitle}
                         </span>
-                        {(currentCase.bellwether_prediction?.top_drivers || [
+                        {(currentCase?.bellwether_prediction?.top_drivers || [
                           { factor: 'EDDI Drought Deficit', weight: '34%', impact: '95th %ile' },
                           { factor: 'HRRR Surface Wind Vectors', weight: '28%', impact: '230° SW' },
                           { factor: '3D LiDAR Slope Angle', weight: '22%', impact: 'Moderate' },
@@ -2069,19 +2075,19 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                           <div className="bg-slate-950/80 p-1.5 rounded">
                             <span className="text-[9px] text-slate-400 block">{t.rateOfSpread}</span>
                             <span className="text-xs font-bold text-orange-400">
-                              {currentCase.academic_simulations?.rothermel_level_set.rate_of_spread_m_min || 18.6} m/min
+                              {currentCase?.academic_simulations?.rothermel_level_set?.rate_of_spread_m_min ?? '—'} m/min
                             </span>
                           </div>
                           <div className="bg-slate-950/80 p-1.5 rounded">
                             <span className="text-[9px] text-slate-400 block">{t.flameLength}</span>
                             <span className="text-xs font-bold text-amber-300">
-                              {currentCase.academic_simulations?.rothermel_level_set.flame_length_meters || 3.4} m
+                              {currentCase?.academic_simulations?.rothermel_level_set?.flame_length_meters ?? '—'} m
                             </span>
                           </div>
                           <div className="bg-slate-950/80 p-1.5 rounded">
                             <span className="text-[9px] text-slate-400 block">{t.firelineIntensity}</span>
                             <span className="text-xs font-bold text-rose-400">
-                              {currentCase.academic_simulations?.rothermel_level_set.fireline_intensity_kw_m || 2840} kW/m
+                              {currentCase?.academic_simulations?.rothermel_level_set?.fireline_intensity_kw_m ?? '—'} kW/m
                             </span>
                           </div>
                         </div>
@@ -2101,13 +2107,13 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                           <div className="bg-slate-950/80 p-1.5 rounded">
                             <span className="text-[9px] text-slate-400 block">{t.spottingProbability}</span>
                             <span className="text-sm font-bold text-rose-400">
-                              {currentCase.academic_simulations?.cellular_automata.ember_spotting_probability || '78.4%'}
+                              {currentCase?.academic_simulations?.cellular_automata?.ember_spotting_probability ?? '—'}
                             </span>
                           </div>
                           <div className="bg-slate-950/80 p-1.5 rounded">
                             <span className="text-[9px] text-slate-400 block">{t.contagionIndex}</span>
                             <span className="text-sm font-bold text-amber-300">
-                              {currentCase.academic_simulations?.cellular_automata.neighborhood_contagion_index || 0.88}
+                              {currentCase?.academic_simulations?.cellular_automata?.neighborhood_contagion_index ?? '—'}
                             </span>
                           </div>
                         </div>
@@ -2120,13 +2126,9 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 space-y-1">
                         <div className="flex items-center justify-between text-[10px]">
                           <span className="font-bold text-slate-300">{t.googleNdwsTitle}</span>
-                          <span className="font-mono text-cyan-300 font-semibold">CSI: 0.642</span>
+                          <span className="font-mono text-slate-500 font-semibold">not run</span>
                         </div>
-                        <div className="grid grid-cols-3 gap-1 text-[10px] text-center text-slate-300">
-                          <div className="bg-slate-950/60 p-1 rounded">IoU: 0.618</div>
-                          <div className="bg-slate-950/60 p-1 rounded">Prec: 0.74</div>
-                          <div className="bg-slate-950/60 p-1 rounded">Rec: {currentCase.survival_label === 'Destroyed' ? '0.88' : '0.52'}</div>
-                        </div>
+                        <div className="text-[10px] text-slate-500">No NDWS model was run on these cases; earlier values here were hard-coded.</div>
                       </div>
                     </div>
                   </div>
@@ -2153,17 +2155,17 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-slate-400">{t.firelineScoreLabel}:</span>
                           <span className={`font-bold px-2 py-0.5 rounded ${
-                            (currentCase.insurance_actuarial?.verisk_fireline_score || 88) > 75
+                            (currentCase?.insurance_actuarial?.verisk_fireline_score ?? 0) > 75
                               ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                               : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                           }`}>
-                            {currentCase.insurance_actuarial?.verisk_score_label || '88/100 (Extreme Hazard)'}
+                            {currentCase?.insurance_actuarial?.verisk_score_label ?? '—'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-[11px]">
                           <span className="text-slate-400">{t.zfireTierLabel}:</span>
                           <span className="text-amber-300 font-medium truncate max-w-[170px]">
-                            {currentCase.insurance_actuarial?.zesty_ai_zfire_tier || 'Tier 1: Extreme Contagion'}
+                            {currentCase?.insurance_actuarial?.zesty_ai_zfire_tier ?? '—'}
                           </span>
                         </div>
                         <div className="p-2 rounded bg-slate-950/80 border border-slate-800/80 text-[10px]">
@@ -2171,10 +2173,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                           <span className={`font-semibold ${
                             currentCase.survival_label === 'Destroyed' ? 'text-rose-300' : 'text-emerald-300'
                           }`}>
-                            {currentCase.insurance_actuarial?.underwriting_status ||
-                              (currentCase.survival_label === 'Destroyed'
-                                ? 'Referred to California FAIR Plan (Non-Renewal Risk)'
-                                : 'Eligible for Voluntary Market Renewal with Hardening Credits')}
+                            {currentCase?.insurance_actuarial?.underwriting_status ?? '—'}
                           </span>
                         </div>
                       </div>
@@ -2185,17 +2184,17 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                           <div>
                             <span className="text-[10px] text-slate-400 block">{t.annualBasePremium}</span>
                             <span className="font-bold text-slate-300 line-through">
-                              ${currentCase.insurance_actuarial?.annual_base_premium_usd || 5800}/yr
+                              ${currentCase?.insurance_actuarial?.annual_base_premium_usd ?? '—'}/yr
                             </span>
                           </div>
                           <div className="text-right">
                             <span className="text-[10px] text-emerald-400 block">{t.annualDiscountedPremium}</span>
                             <span className="font-extrabold text-emerald-400 text-sm">
-                              ${currentCase.insurance_actuarial?.annual_discounted_premium_usd || 5075}/yr
+                              ${currentCase?.insurance_actuarial?.annual_discounted_premium_usd ?? '—'}/yr
                             </span>
                           </div>
                           <span className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-300 font-bold font-mono text-xs border border-emerald-500/30">
-                            {currentCase.insurance_actuarial?.total_mitigation_discount_pct || '-12.5%'}
+                            {currentCase?.insurance_actuarial?.total_mitigation_discount_pct ?? '—'}
                           </span>
                         </div>
                       </div>
@@ -2209,19 +2208,19 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                           <div className="flex justify-between">
                             <span className="text-slate-300">• {t.classARoofCredit}</span>
                             <span className="font-mono text-emerald-400 font-bold">
-                              {currentCase.insurance_actuarial?.cdi_discount_breakdown.class_a_roof_credit || '-5.0%'}
+                              {currentCase?.insurance_actuarial?.cdi_discount_breakdown?.class_a_roof_credit ?? '—'}
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-300">• {t.emberVentCredit}</span>
                             <span className="font-mono text-emerald-400 font-bold">
-                              {currentCase.insurance_actuarial?.cdi_discount_breakdown.ember_mesh_vent_credit || '-3.5%'}
+                              {currentCase?.insurance_actuarial?.cdi_discount_breakdown?.ember_mesh_vent_credit ?? '—'}
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-300">• {t.zone0BufferCredit}</span>
                             <span className="font-mono text-emerald-400 font-bold">
-                              {currentCase.insurance_actuarial?.cdi_discount_breakdown.zone0_buffer_credit || '-4.0%'}
+                              {currentCase?.insurance_actuarial?.cdi_discount_breakdown?.zone0_buffer_credit ?? '—'}
                             </span>
                           </div>
                         </div>
@@ -2269,7 +2268,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         <span>1. {lang === 'zh' ? '宏观正射航拍 (300m)' : 'Macro Ortho (300m)'}</span>
                       </div>
                       <p className="text-[10px] text-slate-400 leading-tight">
-                        {currentCase.structured_assessment?.visual_evidence_attribution?.macro_ortho_context?.slope_exposure || 'Terrain slope & fuel continuity'}
+                        {currentCase?.structured_assessment?.visual_evidence_attribution?.macro_ortho_context?.slope_exposure ?? '—'}
                       </p>
                     </div>
 
@@ -2279,7 +2278,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         <span>2. {lang === 'zh' ? '微观立面街景 (Zone 0)' : 'Micro Facade (Zone 0)'}</span>
                       </div>
                       <p className="text-[10px] text-slate-400 leading-tight truncate">
-                        {currentCase.structured_assessment?.visual_evidence_attribution?.micro_facade_envelope?.eave_soffit_construction || 'Eaves & siding envelope'}
+                        {currentCase?.structured_assessment?.visual_evidence_attribution?.micro_facade_envelope?.eave_soffit_construction ?? '—'}
                       </p>
                     </div>
 
@@ -2289,7 +2288,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         <span>3. {lang === 'zh' ? '地籍与 Chapter 7A' : 'Assessor & Chapter 7A'}</span>
                       </div>
                       <p className="text-[10px] text-slate-400 leading-tight">
-                        {lang === 'zh' ? `建成年份 ${currentCase.year_built} · ${currentCase.assessor_record?.chapter_7a?.code_status || 'Pre-Chapter 7A'}` : `Built in ${currentCase.year_built} · ${currentCase.assessor_record?.chapter_7a?.code_status || 'Pre-Chapter 7A'}`}
+                        {lang === 'zh' ? `建成年份 ${currentCase.year_built} · ${currentCase.assessor_record?.chapter_7a?.code_status ?? '—'}` : `Built in ${currentCase.year_built} · ${currentCase.assessor_record?.chapter_7a?.code_status ?? '—'}`}
                       </p>
                     </div>
 
@@ -2323,13 +2322,13 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       <div className="flex justify-between text-[11px]">
                         <span className="text-slate-400">{lang === 'zh' ? '飞火侵入易损度' : 'Ember Intrusion'}</span>
                         <span className="font-bold text-rose-400 font-mono">
-                          {currentCase.structured_assessment?.physical_vulnerability_matrix?.ember_intrusion_score || 82}/100
+                          {currentCase?.structured_assessment?.physical_vulnerability_matrix?.ember_intrusion_score ?? '—'}/100
                         </span>
                       </div>
                       <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                         <div
                           className="bg-rose-500 h-1.5 rounded-full transition-all duration-500"
-                          style={{ width: `${currentCase.structured_assessment?.physical_vulnerability_matrix?.ember_intrusion_score || 82}%` }}
+                          style={{ width: `${currentCase?.structured_assessment?.physical_vulnerability_matrix?.ember_intrusion_score ?? 0}%` }}
                         />
                       </div>
                     </div>
@@ -2339,13 +2338,13 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       <div className="flex justify-between text-[11px]">
                         <span className="text-slate-400">{lang === 'zh' ? '直接火焰接触' : 'Direct Flame'}</span>
                         <span className="font-bold text-amber-400 font-mono">
-                          {currentCase.structured_assessment?.physical_vulnerability_matrix?.direct_flame_contact_score || 45}/100
+                          {currentCase?.structured_assessment?.physical_vulnerability_matrix?.direct_flame_contact_score ?? '—'}/100
                         </span>
                       </div>
                       <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                         <div
                           className="bg-amber-500 h-1.5 rounded-full transition-all duration-500"
-                          style={{ width: `${currentCase.structured_assessment?.physical_vulnerability_matrix?.direct_flame_contact_score || 45}%` }}
+                          style={{ width: `${currentCase?.structured_assessment?.physical_vulnerability_matrix?.direct_flame_contact_score ?? 0}%` }}
                         />
                       </div>
                     </div>
@@ -2355,13 +2354,13 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       <div className="flex justify-between text-[11px]">
                         <span className="text-slate-400">{lang === 'zh' ? '辐射热通量暴露' : 'Radiant Heat Flux'}</span>
                         <span className="font-bold text-purple-400 font-mono">
-                          {currentCase.structured_assessment?.physical_vulnerability_matrix?.radiant_heat_flux_score || 74}/100
+                          {currentCase?.structured_assessment?.physical_vulnerability_matrix?.radiant_heat_flux_score ?? '—'}/100
                         </span>
                       </div>
                       <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                         <div
                           className="bg-purple-500 h-1.5 rounded-full transition-all duration-500"
-                          style={{ width: `${currentCase.structured_assessment?.physical_vulnerability_matrix?.radiant_heat_flux_score || 74}%` }}
+                          style={{ width: `${currentCase?.structured_assessment?.physical_vulnerability_matrix?.radiant_heat_flux_score ?? 0}%` }}
                         />
                       </div>
                     </div>
@@ -2371,13 +2370,13 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       <div className="flex justify-between text-[11px]">
                         <span className="text-slate-400">{lang === 'zh' ? '结构防御硬化值' : 'Defense Hardening'}</span>
                         <span className="font-bold text-emerald-400 font-mono">
-                          {currentCase.structured_assessment?.physical_vulnerability_matrix?.structural_defense_hardening_score || 38}/100
+                          {currentCase?.structured_assessment?.physical_vulnerability_matrix?.structural_defense_hardening_score ?? '—'}/100
                         </span>
                       </div>
                       <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                         <div
                           className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
-                          style={{ width: `${currentCase.structured_assessment?.physical_vulnerability_matrix?.structural_defense_hardening_score || 38}%` }}
+                          style={{ width: `${currentCase?.structured_assessment?.physical_vulnerability_matrix?.structural_defense_hardening_score ?? 0}%` }}
                         />
                       </div>
                     </div>
@@ -2392,12 +2391,12 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       <span>{t.causalPathwayTitle}</span>
                     </span>
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                      {t.weakestLinkTitle}: {currentCase.structured_assessment?.causal_failure_pathway?.weakest_link_component || currentCase.incident_forensics?.forensic_breach_mechanism || 'Vent Screening'}
+                      {t.weakestLinkTitle}: {(currentCase?.structured_assessment?.causal_failure_pathway?.weakest_link_component || currentCase?.incident_forensics?.forensic_breach_mechanism) ?? '—'}
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                    {(currentCase.structured_assessment?.causal_failure_pathway?.step_by_step_domino_chain || [
+                    {(currentCase?.structured_assessment?.causal_failure_pathway?.step_by_step_domino_chain || [
                       '1. Windward wildland vegetation generates dense ember shower (2-5mm firebrands) propelled by 25-35 mph wind gusts.',
                       '2. Firebrands accumulate in Zone 0 combustible mulch and lodge into unenclosed eave cavities.',
                       '3. Embers breach legacy oversized mesh vents, igniting dry attic cellulose insulation.',
@@ -2419,7 +2418,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                     <Info className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                     <span>
                       <strong className="text-slate-200">{t.stochasticFactorsTitle}:</strong>{' '}
-                      {currentCase.structured_assessment?.causal_failure_pathway?.stochastic_survival_factors?.join('; ') || 'Type 3 wildland engine tactical intervention within 15 min; localized wind direction shift > 35°.'}
+                      {currentCase?.structured_assessment?.causal_failure_pathway?.stochastic_survival_factors?.join('; ') || 'Type 3 wildland engine tactical intervention within 15 min; localized wind direction shift > 35°.'}
                     </span>
                   </div>
                 </div>
@@ -2481,20 +2480,20 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                             {lang === 'zh' ? '加州保险署 (CDI) §2644.9 法定减灾核保载荷' : 'CDI Title 10 § 2644.9 Actuarial Audit Payload'}
                           </span>
                           <span className="text-[10px] text-slate-400">
-                            {currentCase.structured_assessment?.downstream_task_payloads?.insurance_actuarial_underwriting?.fair_plan_eligibility || 'Eligible for FAIR Plan referral with mandatory hardening retrofits'}
+                            {currentCase?.structured_assessment?.downstream_task_payloads?.insurance_actuarial_underwriting?.fair_plan_eligibility ?? '—'}
                           </span>
                         </div>
                         <div className="text-right">
                           <span className="text-[10px] text-slate-400 block">{lang === 'zh' ? '最大年保费节约潜力' : 'Max Annual Savings Potential'}</span>
                           <span className="font-extrabold text-emerald-400 text-sm font-mono">
-                            -${currentCase.structured_assessment?.downstream_task_payloads?.insurance_actuarial_underwriting?.max_potential_annual_premium_savings_usd || 841}/yr
+                            -${currentCase?.structured_assessment?.downstream_task_payloads?.insurance_actuarial_underwriting?.max_potential_annual_premium_savings_usd ?? '—'}/yr
                           </span>
                         </div>
                       </div>
 
                       {/* CDI Credits Table */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
-                        {Object.entries(currentCase.structured_assessment?.downstream_task_payloads?.insurance_actuarial_underwriting?.cdi_section_2644_9_compliance_credits || {
+                        {Object.entries(currentCase?.structured_assessment?.downstream_task_payloads?.insurance_actuarial_underwriting?.cdi_section_2644_9_compliance_credits || {
                           class_a_roof: { qualified: true, credit_pct: 5.0, status: 'Granted' },
                           ember_resistant_vents_1_8th: { qualified: false, credit_pct: 3.0, status: 'Remediation Required' },
                           zone0_5ft_buffer: { qualified: false, credit_pct: 4.0, status: 'Remediation Required' },
@@ -2525,20 +2524,20 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                             {lang === 'zh' ? '现场消防战术分级 (WUI Structure Triage)' : 'WUI Firefighting Tactical Triage'}
                           </span>
                           <span className="text-xs font-bold text-orange-400">
-                            {currentCase.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.triage_category || 'Category 2: Defensible with Prep (Prep & Hold)'}
+                            {currentCase?.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.triage_category ?? '—'}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 text-right text-xs">
                           <div>
                             <span className="text-[10px] text-slate-400 block">{lang === 'zh' ? '预处理时间' : 'Prep Time'}</span>
                             <span className="font-bold text-white font-mono">
-                              {currentCase.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.tactical_prep_time_minutes || 12} mins
+                              {currentCase?.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.tactical_prep_time_minutes ?? '—'} mins
                             </span>
                           </div>
                           <div>
                             <span className="text-[10px] text-slate-400 block">{lang === 'zh' ? '最低水枪流量' : 'Min Flow Rate'}</span>
                             <span className="font-bold text-cyan-400 font-mono">
-                              {currentCase.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.minimum_water_supply_gpm || 150} GPM
+                              {currentCase?.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.minimum_water_supply_gpm ?? '—'} GPM
                             </span>
                           </div>
                         </div>
@@ -2550,7 +2549,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                           {lang === 'zh' ? '到达现场后优先处置任务 (Top 3 Tactical Prep Actions)' : 'Prioritized Tactical Prep Actions:'}
                         </span>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                          {(currentCase.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.prep_actions_required || [
+                          {(currentCase?.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.prep_actions_required || [
                             'Sever attached wooden fence within 5ft of house wall (3 mins)',
                             'Rake combustible bark mulch and dry needles 5ft away from foundation (5 mins)',
                             'Cover legacy oversized attic vents with temporary aluminum fire foil (4 mins)'
@@ -2566,7 +2565,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       </div>
 
                       <p className="text-[10px] text-slate-400 italic">
-                        {currentCase.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.crew_safety_feasibility || 'High defensibility if Type 3 engine arrives >= 15 min prior to headfire.'}
+                        {currentCase?.structured_assessment?.downstream_task_payloads?.tactical_firefighting_operations?.crew_safety_feasibility ?? '—'}
                       </p>
                     </div>
                   )}
@@ -2580,13 +2579,13 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                             {lang === 'zh' ? '物理仿真与元胞自动机耦合边界参数' : 'Coupled Physics Simulation Boundary Parameters'}
                           </span>
                           <span className="text-[10px] text-slate-400">
-                            {currentCase.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.front_propagation_mode || 'Structure-to-Structure Radiant Contagion Domino'}
+                            {currentCase?.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.front_propagation_mode ?? '—'}
                           </span>
                         </div>
                         <div className="text-right">
                           <span className="text-[10px] text-slate-400 block">{lang === 'zh' ? '临界失火引燃时间' : 'Critical Time to Ignition'}</span>
                           <span className="font-extrabold text-blue-400 text-sm font-mono">
-                            {currentCase.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.estimated_critical_time_to_ignition_min || 8.5} mins
+                            {currentCase?.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.estimated_critical_time_to_ignition_min ?? '—'} mins
                           </span>
                         </div>
                       </div>
@@ -2595,19 +2594,19 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         <div className="p-2 rounded bg-slate-900 border border-slate-800 space-y-1">
                           <span className="text-[10px] text-slate-400 block">{lang === 'zh' ? 'Rothermel 局部载荷修正系数' : 'Rothermel Fuel Modifier'}</span>
                           <span className="font-semibold text-white block truncate">
-                            {currentCase.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.rothermel_fuel_adjustment || 'Model SH5 (1.35x Modifier)'}
+                            {currentCase?.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.rothermel_fuel_adjustment ?? '—'}
                           </span>
                         </div>
                         <div className="p-2 rounded bg-slate-900 border border-slate-800 space-y-1">
                           <span className="text-[10px] text-slate-400 block">{lang === 'zh' ? '元胞自动机飞火引燃概率' : 'CA Spotting Coefficient'}</span>
                           <span className="font-bold text-cyan-400 font-mono block">
-                            {currentCase.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.cellular_automata_spotting_coefficient || 0.78}
+                            {currentCase?.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.cellular_automata_spotting_coefficient ?? '—'}
                           </span>
                         </div>
                         <div className="p-2 rounded bg-slate-900 border border-slate-800 space-y-1">
                           <span className="text-[10px] text-slate-400 block">{lang === 'zh' ? '前锋传播机制' : 'Front Propagation'}</span>
                           <span className="font-semibold text-amber-300 block truncate">
-                            {currentCase.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.front_propagation_mode || 'Radiant Domino'}
+                            {currentCase?.structured_assessment?.downstream_task_payloads?.coupled_physics_simulation?.front_propagation_mode ?? '—'}
                           </span>
                         </div>
                       </div>
@@ -2620,7 +2619,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-slate-300">{t.uncertaintyTitle}:</span>
                     <span>
-                      {lang === 'zh' ? '综合物理评定置信度' : 'Assessment Confidence'}: <strong className="text-emerald-400 font-mono">{((currentCase.structured_assessment?.uncertainty_audit?.overall_assessment_confidence || 0.91) * 100).toFixed(0)}%</strong>
+                      {lang === 'zh' ? '综合物理评定置信度' : 'Assessment Confidence'}: <strong className="text-emerald-400 font-mono">{currentCase?.structured_assessment?.uncertainty_audit?.overall_assessment_confidence != null ? `${(currentCase?.structured_assessment?.uncertainty_audit?.overall_assessment_confidence * 100).toFixed(0)}%` : '—'}</strong>
                     </span>
                     <span>•</span>
                     <span className="truncate">
@@ -2650,7 +2649,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
 
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      APN: {currentCase.assessor_record?.apn || '030-051-016'}
+                      APN: {currentCase.assessor_record?.apn ?? '—'}
                     </span>
                     {currentCase.assessor_record?.chapter_7a?.is_compliant ? (
                       <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shadow-sm shadow-emerald-500/20">
@@ -2670,7 +2669,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                   <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
                     <span className="text-slate-400 block text-[11px]">{t.yearBuiltLabel}</span>
-                    <span className="font-bold text-slate-200 text-sm">{currentCase.assessor_record?.year_built || currentCase.year_built || 'Unrecorded'}</span>
+                    <span className="font-bold text-slate-200 text-sm">{(currentCase.assessor_record?.year_built || currentCase.year_built) ?? '—'}</span>
                   </div>
 
                   <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
@@ -2683,14 +2682,14 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                   <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
                     <span className="text-slate-400 block text-[11px]">{t.lotSizeLabel}</span>
                     <span className="font-bold text-slate-200 text-sm truncate block">
-                      {currentCase.assessor_record?.lot_size || '0.25 ac'}
+                      {currentCase.assessor_record?.lot_size ?? '—'}
                     </span>
                   </div>
 
                   <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
                     <span className="text-slate-400 block text-[11px]">评估改进价值 (Assessed)</span>
                     <span className="font-bold text-emerald-300 text-sm">
-                      {currentCase.assessor_record?.assessed_value_display || '$120,000'}
+                      {currentCase.assessor_record?.assessed_value_display ?? '—'}
                     </span>
                   </div>
                 </div>
@@ -2715,7 +2714,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       加州 Chapter 7A 建筑规范法条解读
                     </span>
                     <span className="font-mono text-slate-400">
-                      {currentCase.assessor_record?.chapter_7a?.regulatory_basis || 'California Building Code Title 24'}
+                      {currentCase.assessor_record?.chapter_7a?.regulatory_basis ?? '—'}
                     </span>
                   </div>
                   <p className="text-[11px] leading-relaxed text-slate-400">
@@ -2753,7 +2752,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
 
                   <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
                     <span className="text-slate-400 block text-[11px]">Actual Forensic Ignition Point</span>
-                    <span className="font-semibold text-amber-300">{currentCase.ignition_point || 'None'}</span>
+                    <span className="font-semibold text-amber-300">{currentCase.ignition_point ?? '—'}</span>
                   </div>
 
                   <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 col-span-2">
@@ -2819,12 +2818,12 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         {t.forensicFactsTitle}
                       </h3>
                       <span className="text-[11px] text-slate-400">
-                        {currentCase.incident_forensics?.fire_name || `${currentCase.incident} Fire`} 现场环境与蔓延动力学
+                        {currentCase?.incident_forensics?.fire_name || `${currentCase.incident} Fire`} 现场环境与蔓延动力学
                       </span>
                     </div>
                   </div>
                   <span className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-orange-500/20 text-orange-300 border border-orange-500/30">
-                    {currentCase.incident_forensics?.ignition_date || '2020-06-06'}
+                    {currentCase?.incident_forensics?.ignition_date ?? '—'}
                   </span>
                 </div>
 
@@ -2889,7 +2888,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       </div>
                       <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
                         <span className="text-slate-400 text-[10px] block">{t.physicalBreachPoint}</span>
-                        <span className="font-semibold text-cyan-300">{currentCase.ignition_point || '无击穿 (全防御幸存)'}</span>
+                        <span className="font-semibold text-cyan-300">{currentCase.ignition_point ?? '—'}</span>
                       </div>
                       <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
                         <span className="text-slate-400 text-[10px] block">{t.firefighterAction}</span>
@@ -2897,7 +2896,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       </div>
                     </div>
                     <p className="text-[11px] text-slate-300 leading-relaxed bg-slate-900/40 p-2 rounded border border-slate-800/60">
-                      {currentCase.incident_forensics?.observed_physical_outcome ||
+                      {currentCase?.incident_forensics?.observed_physical_outcome ||
                         (lang === 'zh'
                           ? `加州消防局现场鉴定：建筑在强风火场中经历烈焰与飞火考验，最终实际结果为 ${currentCase.raw_damage}。`
                           : `CAL FIRE forensic inspection: structure experienced severe firebrand flux; certified damage status: ${currentCase.raw_damage}.`)}
@@ -3411,24 +3410,24 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
               </div>
 
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                {currentCase.expert_diagnosis.title}
+                {currentCase?.expert_diagnosis?.title}
               </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-xs leading-relaxed">
               <div className="md:col-span-8 space-y-3">
                 <div className="text-slate-300 text-sm leading-relaxed bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
-                  {currentCase.expert_diagnosis.diagnosis}
+                  {currentCase?.expert_diagnosis?.diagnosis}
                 </div>
               </div>
 
               <div className="md:col-span-4 bg-slate-950/80 p-4 rounded-xl border border-slate-800/80 flex flex-col justify-between space-y-3">
                 <div>
                   <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider block mb-1">
-                    CVPR 2026 Paper Implication:
+                    Recommendation (demo text):
                   </span>
                   <p className="text-slate-300 text-xs leading-relaxed">
-                    {currentCase.expert_diagnosis.recommendation}
+                    {currentCase?.expert_diagnosis?.recommendation}
                   </p>
                 </div>
                 <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
@@ -3495,171 +3494,12 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                 </p>
               </div>
 
-              {/* 4. VLM-Assimilated Physics Simulation Benchmark */}
-              <div className="bg-slate-950/90 p-4 rounded-xl border border-emerald-500/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-emerald-300 block text-sm flex items-center gap-1.5">
-                    <Flame className="w-4 h-4 text-emerald-400" />
-                    4. VLM-to-Physics Data Assimilation Benchmark (50 Ground-Truth DINS Cases)
-                  </span>
-                  <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/40">
-                    Ours: 82.0% Acc · 13.6% FAR
-                  </span>
-                </div>
-                <p className="text-slate-300 text-[11px] leading-relaxed">
-                  Coupling VLM micro-architectural attributions (roof, vent screens, unenclosed eaves, attached wooden fence wicks, Zone 0 buffers)
-                  with continuous Rothermel Level-Set PDEs and Alexandridis Stochastic Cellular Automata directly breaks the &quot;Everything Burns&quot; panic bias.
-                </p>
-
-                {/* Benchmark Comparison Table */}
-                <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-900/60">
-                  <table className="w-full text-left text-[11px] font-mono">
-                    <thead className="bg-slate-800/60 text-slate-400 border-b border-slate-800 text-[10px] uppercase">
-                      <tr>
-                        <th className="py-2 px-3">Paradigm</th>
-                        <th className="py-2 px-2 text-center">Accuracy</th>
-                        <th className="py-2 px-2 text-center">CSI (Threat)</th>
-                        <th className="py-2 px-2 text-center">False Alarms</th>
-                        <th className="py-2 px-2 text-center">Ignition MAE</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                      <tr className="hover:bg-slate-800/30">
-                        <td className="py-2 px-3 font-medium text-slate-400">1. Default Physical Solvers (Unassimilated)</td>
-                        <td className="py-2 px-2 text-center text-rose-400">50.0%</td>
-                        <td className="py-2 px-2 text-center text-slate-400">0.500</td>
-                        <td className="py-2 px-2 text-center text-rose-400 font-bold">50.0%</td>
-                        <td className="py-2 px-2 text-center text-slate-400">18.0 min</td>
-                      </tr>
-                      <tr className="hover:bg-slate-800/30">
-                        <td className="py-2 px-3 font-medium text-purple-400">2. Vanilla Frontier VLM (Zero-Shot Direct)</td>
-                        <td className="py-2 px-2 text-center text-amber-400">56.0%</td>
-                        <td className="py-2 px-2 text-center text-slate-400">0.532</td>
-                        <td className="py-2 px-2 text-center text-rose-400 font-bold">46.8%</td>
-                        <td className="py-2 px-2 text-center text-slate-500">N/A</td>
-                      </tr>
-                      <tr className="hover:bg-slate-800/30">
-                        <td className="py-2 px-3 font-medium text-cyan-400">3. Pure Data-Driven AI (Bellwether/NDWS)</td>
-                        <td className="py-2 px-2 text-center text-cyan-400">62.0%</td>
-                        <td className="py-2 px-2 text-center text-slate-400">0.584</td>
-                        <td className="py-2 px-2 text-center text-amber-400">38.0%</td>
-                        <td className="py-2 px-2 text-center text-slate-400">18.4 min</td>
-                      </tr>
-                      <tr className="bg-emerald-950/20 font-semibold border-t-2 border-emerald-500/40">
-                        <td className="py-2 px-3 text-emerald-300 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          4. Proposed VLM-Assimilated Physics (Ours)
-                        </td>
-                        <td className="py-2 px-2 text-center text-emerald-400 font-bold">82.0%</td>
-                        <td className="py-2 px-2 text-center text-emerald-400 font-bold">0.679</td>
-                        <td className="py-2 px-2 text-center text-emerald-400 font-bold">13.6%</td>
-                        <td className="py-2 px-2 text-center text-emerald-300">6.7 min</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="text-[10px] text-slate-400 space-y-1 pt-1">
-                  <p>• <b>Key Finding:</b> Unassimilated models fail because they lack parcel-level envelope hardening parameters, assuming pre-2008 homes always ignite.</p>
-                  <p>• <b>Quantifying the Negative:</b> VLM physics coupling explicitly identifies tactical firefighter interventions (e.g. severing combustible wooden fences) that saved vulnerable homes.</p>
-                </div>
-              </div>
-
-              {/* 5. Verifiable Post-Training Benchmark (RLVR / GRPO) */}
-              <div className="bg-slate-950/90 p-4 rounded-xl border border-purple-500/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-purple-300 block text-sm flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-purple-400" />
-                    {t.rlvrBenchmarkTitle}
-                  </span>
-                  <span className="text-[10px] font-mono bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded border border-purple-500/40">
-                    Ours: 94.0% Acc · 12.0% FAR · CSI 0.893
-                  </span>
-                </div>
-                <p className="text-slate-300 text-[11px] leading-relaxed">
-                  {t.rlvrBenchmarkSub}
-                </p>
-
-                {/* Mathematical Formulation Pill */}
-                <div className="bg-purple-950/40 border border-purple-500/30 rounded-lg p-2.5 font-mono text-[11px] text-purple-200">
-                  <div className="text-[10px] uppercase text-purple-400 font-bold mb-1">
-                    {t.rewardFormulaLabel}:
-                  </div>
-                  <code>R = 0.5·R_outcome + 1.0·R_locus + 0.8·R_spatial + 1.5·R_physics + 0.5·R_cot_format</code>
-                  <div className="text-[10px] text-slate-400 mt-1.5 grid grid-cols-1 sm:grid-cols-3 gap-1">
-                    <span>• Anti-Physics Penalty: -2.0</span>
-                    <span>• Combustible Wick: +1.0</span>
-                    <span>• Epistemic Calibration: +0.5</span>
-                  </div>
-                </div>
-
-                {/* Ablation Benchmark Table */}
-                <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-900/60">
-                  <table className="w-full text-left text-[11px] font-mono">
-                    <thead className="bg-slate-800/60 text-slate-400 border-b border-slate-800 text-[10px] uppercase">
-                      <tr>
-                        <th className="py-2 px-3">Paradigm</th>
-                        <th className="py-2 px-1 text-center">Accuracy</th>
-                        <th className="py-2 px-1 text-center">CSI</th>
-                        <th className="py-2 px-1 text-center">FAR</th>
-                        <th className="py-2 px-1 text-center">Locus Acc</th>
-                        <th className="py-2 px-1 text-center">Anti-Physics</th>
-                        <th className="py-2 px-1 text-center">Wick Recall</th>
-                        <th className="py-2 px-1 text-center">Mean R</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                      <tr className="hover:bg-slate-800/30">
-                        <td className="py-2 px-3 font-medium text-slate-400">1. Zero-Shot Frontier VLM (Unaligned)</td>
-                        <td className="py-2 px-1 text-center text-rose-400">54.0%</td>
-                        <td className="py-2 px-1 text-center text-slate-400">0.521</td>
-                        <td className="py-2 px-1 text-center text-rose-400 font-bold">92.0%</td>
-                        <td className="py-2 px-1 text-center text-slate-400">0.0%</td>
-                        <td className="py-2 px-1 text-center text-rose-400 font-bold">34.0%</td>
-                        <td className="py-2 px-1 text-center text-slate-400">0.0%</td>
-                        <td className="py-2 px-1 text-center text-rose-400">-1.13</td>
-                      </tr>
-                      <tr className="hover:bg-slate-800/30">
-                        <td className="py-2 px-3 font-medium text-amber-400">2. Visual-CoT SFT (Cold-Start Supervised)</td>
-                        <td className="py-2 px-1 text-center text-amber-300">82.0%</td>
-                        <td className="py-2 px-1 text-center text-slate-400">0.735</td>
-                        <td className="py-2 px-1 text-center text-amber-400">36.0%</td>
-                        <td className="py-2 px-1 text-center text-slate-300">37.5%</td>
-                        <td className="py-2 px-1 text-center text-amber-400">28.0%</td>
-                        <td className="py-2 px-1 text-center text-amber-400">47.1%</td>
-                        <td className="py-2 px-1 text-center text-amber-300">+0.41</td>
-                      </tr>
-                      <tr className="hover:bg-slate-800/30">
-                        <td className="py-2 px-3 font-medium text-cyan-400">3. RLVR (Outcome Reward R_outcome Only)</td>
-                        <td className="py-2 px-1 text-center text-cyan-300">86.0%</td>
-                        <td className="py-2 px-1 text-center text-slate-400">0.781</td>
-                        <td className="py-2 px-1 text-center text-cyan-300">28.0%</td>
-                        <td className="py-2 px-1 text-center text-slate-300">37.5%</td>
-                        <td className="py-2 px-1 text-center text-rose-400 font-bold">30.0%</td>
-                        <td className="py-2 px-1 text-center text-slate-300">47.1%</td>
-                        <td className="py-2 px-1 text-center text-cyan-300">+0.36</td>
-                      </tr>
-                      <tr className="bg-purple-950/20 font-semibold border-t-2 border-purple-500/40">
-                        <td className="py-2 px-3 text-purple-300 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
-                          4. WildfireReason (Ours: SFT + Verifiable RLVR)
-                        </td>
-                        <td className="py-2 px-1 text-center text-purple-300 font-bold">94.0%</td>
-                        <td className="py-2 px-1 text-center text-purple-300 font-bold">0.893</td>
-                        <td className="py-2 px-1 text-center text-emerald-400 font-bold">12.0%</td>
-                        <td className="py-2 px-1 text-center text-purple-300 font-bold">75.0%</td>
-                        <td className="py-2 px-1 text-center text-emerald-400 font-bold">4.0%</td>
-                        <td className="py-2 px-1 text-center text-emerald-400 font-bold">100.0%</td>
-                        <td className="py-2 px-1 text-center text-purple-300 font-bold">+3.39</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="text-[10px] text-slate-400 space-y-1 pt-1">
-                  <p>• <b>Outcome-Only Shortcut Failure:</b> Optimizing solely for binary survival ($R_outcome$) allows models to cheat by hallucinating ungrounded physical mechanisms (30% anti-physics violation rate).</p>
-                  <p>• <b>Verifiable Reward Alignment:</b> Penalizing anti-physics violations (-2.0) and rewarding structural combustible fence wicks (+1.0) achieves 94% accuracy, 100% wick recall, and drops false alarms from 92% to 12%.</p>
-                </div>
+              {/* Audit 2026-10-22: sections 4-5 showed hard-coded "Ours" results (82.0%, 94.0%) from simulations that
+                  used the true labels. They are removed. Real results: docs/EVIDENCE_STATUS.md. */}
+              <div className="bg-slate-950/90 p-4 rounded-xl border border-amber-500/40 text-[11px] text-amber-200">
+                Earlier versions showed "VLM-to-physics assimilation" and "RLVR" result tables here. Those numbers came from
+                simulations that generated predictions from the true outcome labels, so they were removed. Held-out results
+                are tracked in docs/EVIDENCE_STATUS.md.
               </div>
             </div>
 

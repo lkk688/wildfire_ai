@@ -33,7 +33,8 @@ def zero_shot(run, evidence):
             continue
         if r["global_id"] not in best or r.get("parse_ok"):
             best[r["global_id"]] = r
-    return {g: r["p_destroyed"] for g, r in best.items() if r.get("parse_ok")}
+    # intention-to-treat: an unparsed answer counts as p = 0.5
+    return {g: (r["p_destroyed"] if r.get("parse_ok") else 0.5) for g, r in best.items()}
 
 
 def main() -> None:

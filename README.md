@@ -1,247 +1,127 @@
-# Wildfire AI: Geospatial Intelligence & Multi-Model Decision Support Platform
+# Wildfire AI: verifiable evaluation of vision-language models for structure loss
 
-[![Next.js](https://img.shields.io/badge/Frontend-Next.js%2016-000000.svg)](http://localhost:3000)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](http://localhost:8000)
-[![Leaflet](https://img.shields.io/badge/GIS-Leaflet-199900.svg)](https://leafletjs.com/)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
-[![LLM Architecture](https://img.shields.io/badge/AI-OpenAI--Compatible-7c3aed.svg)](#4-openai-compatible-multi-provider-architecture)
-[![Academic SOTA](https://img.shields.io/badge/Physics--AI-Level--Set%20PDE%20%7C%20CA-ff6b35.svg)](docs/ACADEMIC_WILDFIRE_MODELS_BENCHMARK.md)
+Research code for evaluating whether vision-language models (VLMs) can tell, from aerial imagery, which homes
+**will be** destroyed in a wildfire (pre-fire) and which **were** destroyed (post-fire), against real outcomes
+from CAL FIRE damage inspections (DINS).
 
-An interactive, multi-source geospatial intelligence and wildfire decision-support platform. Engineered for wildland-urban interface (WUI) risk analytics, dynamic hazard raster rendering, physical & discrete fire propagation modeling, insurance discount compliance, and incident commander resource prioritization.
+> **Read this first.** This repository contains two kinds of code:
+>
+> 1. **The research pipeline** (`scripts/`, `src/vlm_benchmark/imagery_provenance.py`, `paper/`). Every number it
+>    produces is computed from real records and real model outputs. What is and is not established is tracked
+>    in [`docs/EVIDENCE_STATUS.md`](docs/EVIDENCE_STATUS.md), the single source of truth for results.
+> 2. **A legacy demo application** (`backend/`, `frontend/`, and parts of `src/`), built before 2026-10-19.
+>    **Much of its displayed content is synthetic, hard-coded, or generated from the true outcome label.** It must not
+>    be used for decisions or presented as results. See [Legacy demo application](#legacy-demo-application) below.
 
----
+## Research pipeline
 
-## 🌟 Platform Mission & User Value Propositions
+**Data and splits.**
+- 132,522 DINS records; the residential binary label is Destroyed + Major vs. No Damage / Affected / Minor.
+- Splits are by fire event and forward in time: train on 2019–23 fires, test on 2024–25 fires.
+- The 50-case legacy development set is quarantined, and buildings near another split's buildings are excluded
+  (100 m buffer).
 
-This platform is engineered from the ground up to serve two critical stakeholder groups in high-risk wildfire corridors:
+**Imagery provenance.** [`src/vlm_benchmark/imagery_provenance.py`](src/vlm_benchmark/imagery_provenance.py)
+fetches Esri World Imagery Wayback crops and records each crop's verified per-location **capture date**, not just its
+release date.
+- A pre-fire crop must be captured before the fire.
+- A post-fire crop is the earliest capture within 365 days after the fire.
+- There is no fallback to current imagery: if the capture date cannot be verified, the sample is rejected.
 
-```
-                          ┌──────────────────────────────────────────────┐
-                          │   Wildfire AI Spatial Intelligence Engine    │
-                          └──────────────────────┬───────────────────────┘
-                                                 │
-                 ┌───────────────────────────────┴───────────────────────────────┐
-                 ▼                                                               ▼
-   🏡 For Residents & Homeowners                                    🚒 For Incident Commanders & Firefighters
-   • Demystify insurance non-renewals & FAIR plan rate spikes       • Real-time NOAA HRRR wind plumes & gust vectors
-   • Prioritized Zone 0 (0-5ft) & Zone 1 home hardening             • Live CDEC/RAWS 1-hr, 10-hr, 100-hr fuel moisture (DFM)
-   • Qualify for California CDI "Safer from Wildfires" discounts    • 130ft radiant heat contagion corridor simulation
-   • Red Flag situational awareness & evacuation readiness           • "Quantifying the Negative" structural ROI valuation
-```
+**Tasks.**
 
-### 🏡 For Residents & Property Owners
-*   **Demystifying Wildfire Insurance**: Explains why actuarial catastrophe models (Verisk / Zesty.ai) cause policy cancellations, and how to appeal non-renewals.
-*   **Home Hardening Action Plan**: Detailed instructions on retrofitting Class A roofing, 1/16-inch ember-resistant mesh vents, and double-pane tempered glass.
-*   **Defensible Space Zone Compliance**: Visual guides for Zone 0 (0–5ft non-combustible gravel/paver buffer), Zone 1 (5–30ft lean/clean/green zone), and Zone 2 (30–100ft reduced fuel zone).
-*   **Legally Mandated Premium Discounts**: Direct guidance to qualify for California Department of Insurance (CDI) "Safer from Wildfires" regulations (10 CCR § 2644.9) and IBHS Wildfire Prepared Home designations.
+| Task | Question | Main script |
+|---|---|---|
+| T1 | Pre-fire, single building: P(destroyed) | `scripts/eval/run_vlm_conditions.py` |
+| T2 | Pre-fire, same-fire neighbour pairs 15–100 m apart (exposure-controlled): which one was destroyed? | `scripts/eval/run_vlm_pairs.py` |
+| T3 | Post-fire damage recognition | `scripts/eval/run_vlm_conditions.py --evidence postfire_image`, `scripts/train/sft_postfire_qwen.py` |
+| Replication | Pre-registered confirmatory tests on untouched validation fires | `scripts/eval/confirmatory_analysis.py`, [`docs/CONFIRMATORY_PLAN.md`](docs/CONFIRMATORY_PLAN.md) |
 
-### 🚒 For Firefighters, Incident Commanders, & City Planners
-*   **Live Environmental Telemetry**: Real-time integration of NOAA HRRR wind speed and direction vectors, CDEC fuel moisture monitoring stations, and NASA FIRMS VIIRS satellite thermal hotspots.
-*   **130ft Radiant Heat Contagion Corridors**: Wind-adjusted structural contagion modeling based on Eric Saylors' fire propagation framework, calculating threatened asset values vs saved property values.
-*   **Quantification of the Negative (S-Ratio)**: Quantitative justification of fire mitigation investments, calculating structural asset loss prevention for municipal leadership and city councils.
-*   **Regulatory vs Dynamic Hazard Discrepancy Alerts**: Highlights tactical under-warning zones where modern dynamic AI burn probabilities exceed static CAL FIRE Moderate designations.
+**Baselines and analyses.** All are in `scripts/eval/`:
+- tabular models
+- frozen DINOv2/SigLIP probes and a pair ranker
+- fine-tuned DINOv2
+- masking, resolution and split-inflation analyses
+- missingness leakage
+- retrieval
 
----
+**Paper tables and figures.** These are generated only from `output/` by `scripts/paper/make_tables.py` and
+`make_figures.py`. VLM answers that fail to parse count as p = 0.5 (intention-to-treat).
 
-## 📸 Core Features & Visual Interface
+**Exploratory pilots (2026-10-22, feasibility only).**
+- *Community-scale risk:* `scripts/data/build_community_cells.py`, `worldcover_features.py`.
+- *Evacuation-decision replay:* archived NIFC perimeters, with no future information at decision time.
+  See `scripts/data/evac_perimeter_inventory.py`, `build_evac_replay.py`, `ms_building_cells.py`,
+  `render_evac_maps.py`, `scripts/eval/evac_baselines.py` and `run_evac_vlm.py`.
 
-### 1. WildfireReason-VLM: Forensic Ignition Attribution & Defect Discovery Workstation
+`output/` is git-ignored. API keys are read from the environment (`CLAUDE_API_KEY` / `ANTHROPIC_API_KEY`,
+`QWEN_REMOTE_KEY` with `TB_REMOTE_QWEN_URL`, `MINIMAX_API_KEY`) and are never stored in the repository.
 
-A Vision-Language Model (VLM) inspection workstation and benchmark prototype (engineering demo; see [docs/EVIDENCE_STATUS.md](docs/EVIDENCE_STATUS.md) for which results are empirical). It benchmarks leading frontier models against real-world post-fire structural damage inspections from the **CAL FIRE Damage Inspection Specialist (DINS)** database paired with **sub-meter ESRI World Imagery (Zoom 18)**:
+### Documentation
 
-[![Watch VLM Fire Vision Demo](docs/assets/vlm_fire_vision_workstation.png)](docs/assets/vlm_fire_vision_demo.webp)
-> 📹 **Live Demonstration Animation**: Click image above or view [Full Session Recording (WebP)](docs/assets/vlm_fire_vision_demo.webp) demonstrating bidirectional mode switching, 50-case browsing, collapsible CoT reasoning traces, expert forensic defect analysis, and live multi-model execution.
+| Document | Content |
+|---|---|
+| [`docs/EVIDENCE_STATUS.md`](docs/EVIDENCE_STATUS.md) | Claims ledger: the evidence level of every result |
+| [`docs/CONFIRMATORY_PLAN.md`](docs/CONFIRMATORY_PLAN.md) | Pre-registration and results of the replication |
+| [`docs/POSTFIRE_TASK_PLAN.md`](docs/POSTFIRE_TASK_PLAN.md) | Pre-registration and results of the post-fire task |
+| [`docs/VLM_ROLE_AND_BASELINE_DESIGN.md`](docs/VLM_ROLE_AND_BASELINE_DESIGN.md) | How VLMs are used, and which baselines they are compared with |
+| [`docs/RELATED_WORK_WIRC.md`](docs/RELATED_WORK_WIRC.md) | Related work (SJSU WIRC survey) |
+| [`docs/archive/`](docs/archive/) | **Archived** pre-10-19 documents, each headed by a list of known errors. Not a source of results. |
 
-![Expert Fire Forensic Defect Analysis](docs/assets/vlm_fire_defect_analysis.png)
+### Data sources and licences
 
-*   **Bidirectional Application Switcher**: Instant 1-click global toggle between the **🗺️ 3D Risk GIS Map** and the **👁️ VLM Fire Vision & Reasoning Benchmark**.
-*   **Development-set text baseline (not a vision benchmark)** — see [docs/EVIDENCE_STATUS.md](docs/EVIDENCE_STATUS.md):
-    The legacy evaluator sends **text only** (DINS post-fire inspector attributes + one fixed Red Flag sentence; no image), on 50 development cases (28 from Quail; 24 Destroyed + 1 Major vs 17 No Damage + 6 Affected + 2 Minor). Values from `benchmark_results/baseline_evaluation_*.json` (2026-10-18); FPR = FP/(FP+TN) on survived homes:
-    *   **MiniMax-M3**: 54% accuracy, 88% FPR.
-    *   **Claude Haiku 5.5 (`claude-haiku-5-5`)**: 46% accuracy, 88% FPR.
-    *   **Claude Sonnet 5.5 (`claude-sonnet-5-5`)**: 46% accuracy, 80% FPR.
-    *   **Qwen3.8-27B (Remote vLLM)**: 50% accuracy, 100% FPR.
-    *   Locus (ignition-location) accuracy is not reported: only 2 destroyed dev cases have a specific ignition label.
-    *   Held-out, image-in-the-loop evaluation: `scripts/eval/run_vlm_conditions.py` on `output/splits/pilot_test.jsonl`.
-*   **Sub-Meter Aerial Imagery & Forensic GT Pairing**:
-    *   High-resolution Zoom 18 orthoimagery (0.3m/pixel) capturing parcel geometry, 0–5ft Zone 0 buffers, gravel driveways, and tree overhangs.
-    *   Forensic CAL FIRE DINS ground truth: verified damage severity (`No Damage` to `Destroyed`), exact initial ignition point (`WHEREFIRESTARTEDONSTRUCTURE`), and emergency responder suppression actions (`Hand Crew Fuel Break`, `Engine Protection`).
-*   **Collapsible Chain-of-Thought (CoT) Traces**: Expandable native thinking drawer (`<think>` tokens) exposing how each model constructs its deductive chain.
-*   **Expert Fire Forensic Defect Breakdown ("错在哪")**: Case-by-case diagnosis pinpointing the exact failure mode:
-    *   *Tactical Fire Suppression Blind Spot*: Models ignoring hand-crew fuel breaks that successfully saved pre-code structures.
-    *   *The "Everything Burns" Hyper-Pessimism*: Red Flag ambient tokens triggering total loss predictions despite Class A roofing and $\le 1/8"$ ember screens.
-    *   *Siding vs. Vent Shortcut Heuristics*: Models defaulting to superficial material keywords without computing physical flux thresholds.
-*   **Interactive Live Model Execution**: On-demand inference runner allowing users or evaluators to query any of the 4 models live, streaming back latency and parsed predictions.
+| Source | Terms |
+|---|---|
+| CAL FIRE DINS | Public records |
+| Esri World Imagery / Wayback | Esri terms of use; crops are not redistributed |
+| NIFC Operational Data Archive | Public domain |
+| Microsoft US Building Footprints | ODbL |
+| ESA WorldCover 2021 | CC BY 4.0 |
+| ERA5 via Open-Meteo | CC BY 4.0 |
+| Bellwether rasters | Shared by the partner; not redistributed |
 
----
+## Legacy demo application
 
-### 2. Autonomous AI Wildfire Copilot (ReAct GIS Agent)
+`backend/` (FastAPI) and `frontend/` (Next.js) implement a GIS dashboard, a VLM "workstation" and an AI copilot.
+An audit on 2026-10-22 found that, in their current state, many displayed values are not real:
 
-The platform features an embedded AI Copilot equipped with autonomous tool-calling capabilities. Powered by a generic OpenAI-compatible backend, the Copilot dynamically queries live GIS datasets, calculates corridor risk, checks fuel moisture thresholds, and provides tailored intelligence for residents and incident commanders.
+- **Label-conditioned values (generated from the true DINS outcome).** These are shown as model outputs:
+  - "Bellwether" probabilities: 0.0342 if destroyed, else 0.0125 (5-year 0.158 / 0.058)
+  - the Zone 0 and defensible-space status
+  - the insurance and Verisk figures
+  - the academic-simulation numbers
+  - the expert "forensic" diagnoses
+  - the `structured_assessment` returned by `/api/vlm/predict`, even when the model call fails
+  - the RLVR / SFT / "WildfireReason" benchmark predictions (`rlvr_post_training_runner.py`)
+  - the SFT "gold" reasoning traces (`cot_dataset_generator.py`)
 
-![AI Wildfire Copilot Firefighter Mode](docs/assets/ai_copilot_firefighter_mode.png)
+  Real Bellwether rasters exist only for the partner pilot area (`/api/layers/bellwether`, `/api/risk-factors`).
+- **Synthetic data labelled as live:**
+  - the CAL FIRE incidents, including fictitious "active" incidents
+  - FIRMS hotspots, CDEC/RAWS fuel moisture, HRRR weather
+  - the "USGS 3DEP LiDAR" slope (a sine pattern)
+  - the "Microsoft Building Footprints" layer (an 8×8 grid with fake APNs)
+  - the FHSZ overlay (concentric circles)
+  - the corridor burn probability (a constant)
+  - the land cover (chosen by hashing the coordinates)
 
-*   **Dual Persona Architecture**: Switch seamlessly between **🏡 Resident Mode** (insurance discounts, home hardening steps) and **🚒 Firefighter Mode** (tactical fuel moisture, radiant heat corridors, S-Ratio calculations).
-*   **Autonomous ReAct Tool-Calling**: The Copilot automatically triggers 6 specialized geospatial tools (`get_live_weather`, `get_live_fuel_moisture`, `query_corridor_risk`, `get_model_evaluation`, `get_home_hardening_guidelines`, `get_active_hotspots`).
-*   **Dynamic Model Discovery**: Automatically discovers and displays the active model name and endpoint status.
+  The copilot's tools return these same values.
+- **Hard-coded results in the UI:** the "Ours" tables (82% assimilation, 94% RLVR), the fallback values (e.g. '3.42%',
+  '$3,250,000') and the venue badges. The "Commercial SOTA" and "NDWS" benchmark rows were constants and a hand-drawn
+  ellipse.
+- **The 50-case development set is confounded:** all 25 survived cases come from one fire, and its evaluator prompt
+  includes the fire name. Its scores (text only, no image) say nothing about vision.
+- **`src/README.md` and `src/walkthrough.md`** describe this demo and have not been re-audited line by line.
 
----
+Until each component is rebuilt on real outputs, treat the whole demo as an interface mock-up. The provider-switching
+endpoint is disabled unless `WILDFIRE_DEMO_ALLOW_PROVIDER_SWITCH=1` is set, and it never accepts a custom `base_url`
+from the network.
 
-### 3. Off-the-Shelf Model Evaluation & Gap Analysis
-
-A dedicated educational and diagnostic panel allowing users to compare leading wildfire risk models side-by-side:
-
-![Model Evaluation and Gap Analysis Panel](docs/assets/model_evaluation_gap_analysis.png)
-
-*   **5-Dimensional Comparative Tabs**:
-    1. **Overview & Educational Guide**: Plain-language explanations of model differences, resolution, and update frequencies.
-    2. **Comparative Matrix**: High-density feature comparison across Bellwether, CAL FIRE FHSZ, Commercial Cat-Models, and Academic SOTA.
-    3. **Key Gap Analysis**: Detailed investigation into why static regulatory maps under-predict wind-driven fire spread in micro-corridors.
-    4. **Actionable Recommendations**: Clear separation of operational guidelines for Fire Marshals vs Homeowners.
-    5. **Academic SOTA & LLM Requirements**: Theoretical formulations (Level-Set PDEs, FNO, Cellular Automata) and data requirements for LLM spatial reasoning.
-
----
-
-### 3. Multi-Source GIS Dashboard & Dynamic Regional Cropping
-
-The interactive GIS map combines multiple satellite, topographic, and municipal layers with instant bounding-box spatial cropping:
-
-![Multi-Region GIS Dashboard](docs/assets/multi_region_gis_dashboard.png)
-
-*   **Multi-Region Support**: Instant 1-click camera re-centering and dynamic raster clipping across **San Bruno WUI**, **San Jose Foothills / Alum Rock**, and **Santa Cruz Mountains (CZU Fire Interface)**.
-*   **Google Cloud Storage (GCS) Dynamic Rasters**: Downloads and crops Cloud-Optimized GeoTIFFs (COGs) on-the-fly for any selected bounding box.
-*   **Live Layer Stack**:
-    *   Google X Project Bellwether 100m Hazard Rasters (1-Year & 5-Year horizon)
-    *   CAL FIRE Active Incidents & Historical Fire Perimeters
-    *   NASA FIRMS VIIRS/MODIS Satellite Thermal Hotspots
-    *   CDEC & RAWS Automated Weather / Fuel Moisture Stations
-    *   USGS 3DEP LiDAR High-Resolution Topographic Elevation & Slope Aspect
-    *   Microsoft Building Footprints (WUI Structural Density)
-
----
-
-### 4. Wind-Adjusted 130ft Radiant Heat Contagion Corridor
-
-Implements Eric Saylors' radiant heat propagation formula ($q''_{\text{incident}} = \epsilon \sigma F_{12} T_{\text{flame}}^4$), dynamically adjusting the 130-foot threshold based on live NOAA wind plumes:
-
-![130ft Radiant Heat Contagion Corridor](docs/assets/corridor_radiant_heat.png)
-
-*   **Directional Flame Elongation**: Elliptical corridor stretching along the downwind vector with lateral flanking buffer.
-*   **Automated Parcel Spatial Intersect**: Calculates total threatened residential and commercial parcels within seconds.
-*   **Negative Value Quantification**: Computes structural replacement valuation ($485/sqft baseline) and estimates the Saylors Mitigation ROI Ratio (S-Ratio).
-
----
-
-## ⚙️ 4. OpenAI-Compatible Multi-Provider Architecture
-
-The AI module (`backend/ai/`) utilizes a clean, decoupled OpenAI-compatible architecture. **Any OpenAI-compatible API endpoint can be tested and hot-swapped** without restarting the application:
-
-```
-                       ┌─────────────────────────────────────────┐
-                       │     AIConfig (backend/ai/config.py)     │
-                       └────────────────────┬────────────────────┘
-                                            │
-        ┌───────────────────┬───────────────┴───────────┬───────────────────┐
-        ▼                   ▼                           ▼                   ▼
-   Local Ollama         MiniMax API                 OpenAI API          DeepSeek / vLLM
-(localhost:11434)   (api.minimaxi.com/v1)       (api.openai.com/v1)   (api.deepseek.com/v1)
- qwen2.5vl / gpt-oss     MiniMax-M3                    gpt-4o             deepseek-chat
-```
-
-### Switching Models in `backend/ai/provider_config.json`
-Simply modify `backend/ai/provider_config.json` to select your preferred provider or specify a custom endpoint:
-
-```json
-{
-  "active_provider": "minimax",
-  "model": null,
-  "base_url": null,
-  "description": "Presets: 'minimax', 'ollama', 'openai', 'deepseek', 'vllm'. Or specify custom base_url & model."
-}
-```
-
-### Dynamic Hot-Swapping via REST API
-You can also hot-swap providers programmatically at runtime:
+## Quick start (research pipeline)
 
 ```bash
-# Switch to Local Ollama running Qwen2.5-VL
-curl -X POST http://localhost:8000/api/ai/switch-provider \
-     -H "Content-Type: application/json" \
-     -d '{"provider": "ollama", "model": "qwen2.5vl:7b-q8_0"}'
-
-# Switch back to MiniMax API
-curl -X POST http://localhost:8000/api/ai/switch-provider \
-     -H "Content-Type: application/json" \
-     -d '{"provider": "minimax"}'
+python scripts/data/build_research_splits.py              # event-level, forward-in-time splits
+python scripts/eval/run_vlm_conditions.py --help          # zero-shot VLM conditions (T1 / T3)
+python scripts/eval/run_vlm_pairs.py --help               # exposure-controlled pairs (T2)
+python scripts/paper/make_tables.py && python scripts/paper/make_figures.py
 ```
-
-*API keys are automatically discovered from environment variables or `~/.bashrc` (`MINIMAX_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`).*
-
----
-
-## 🔬 5. Academic Frontier Wildfire Prediction Models
-
-In addition to commercial and regulatory models, the platform includes **local, runnable implementations of frontier academic wildfire propagation models** under [`src/academic_models/`](file:///Developer/wildfire_ai/src/academic_models/):
-
-1.  **Rothermel Level-Set PDE Solver** ([`rothermel_level_set.py`](file:///Developer/wildfire_ai/src/academic_models/rothermel_level_set.py)):
-    *   Solves the continuous Hamilton-Jacobi PDE $\partial \phi / \partial t + R(\mathbf{x}, \nabla \phi) \|\nabla \phi\| = 0$ using a first-order Godunov upwind scheme.
-    *   Strict energy and mass conservation with zero front leakage across non-burnable fuel breaks.
-    *   Execution Latency: **46.9 ms** on CPU.
-2.  **Alexandridis Stochastic Cellular Automata** ([`cellular_automata.py`](file:///Developer/wildfire_ai/src/academic_models/cellular_automata.py)):
-    *   Discrete 8-neighbor probabilistic automata with wind vectoring and slope aspect multipliers.
-    *   Native stochastic **Weibull firebrand ember spotting jump operator**, modeling long-range ignition ahead of the front.
-    *   Execution Latency: **104.7 ms** on CPU.
-3.  **Standardized Academic Benchmark Suite** ([`benchmark_suite.py`](file:///Developer/wildfire_ai/src/academic_models/benchmark_suite.py)):
-    *   Evaluates models against Google Research NDWS (NeurIPS 2021) and WildfireSpreadTS (NeurIPS 2023) protocols.
-    *   Measures Critical Success Index (CSI / Threat Score), Intersection-over-Union (IoU), Sørensen-Dice, and execution latency.
-
-> 📘 **Dedicated Technical Report**: For formal mathematical derivations, PDE finite-difference discretization, and comprehensive benchmark experiments, see **[`docs/ACADEMIC_WILDFIRE_MODELS_BENCHMARK.md`](file:///Developer/wildfire_ai/docs/ACADEMIC_WILDFIRE_MODELS_BENCHMARK.md)**.
-
-### Academic REST API Endpoints
-*   `GET /api/academic/models`: Metadata and governing equations of academic models.
-*   `GET /api/academic/benchmark-results`: Executes standardized comparative benchmark evaluation.
-*   `POST /api/academic/simulate`: Interactive on-demand physical/discrete fire propagation simulation.
-
----
-
-## 🚀 6. Quick Start Guide
-
-### Prerequisites
-*   Node.js 18+ & npm
-*   Python 3.10+ (with PyTorch, NumPy, SciPy, FastAPI, GDAL/Rasterio)
-
-### 1. Launch FastAPI Backend (Port 8000)
-```bash
-# In repository root:
-python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-```
-*   API Documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
-*   Health Check: [http://localhost:8000/api/health](http://localhost:8000/api/health)
-
-### 2. Launch Next.js Frontend (Port 3000)
-```bash
-cd frontend
-npm run dev -- -p 3000
-```
-*   Web Dashboard: [http://localhost:3000](http://localhost:3000)
-
-### 3. Run Academic Benchmark Verification
-```bash
-python3 -c "from src.academic_models import AcademicBenchmarkRunner; import json; print(json.dumps(AcademicBenchmarkRunner.run_comprehensive_benchmark(), indent=2))"
-```
-
----
-
-## 📚 7. Project Documentation Index
-
-*   🔥 **[CVPR Research Proposal: Verifiable VLM Reasoning (docs/CVPR_WILDFIRE_VLM_REASONING_PROPOSAL.md)](docs/CVPR_WILDFIRE_VLM_REASONING_PROPOSAL.md)**: Research proposal on targeting CVPR with multimodal spatial reasoning, RLVR/GRPO post-training, and CAL FIRE DINS verifiable ground truth.
-*   📘 **[Academic Wildfire Models Benchmark (docs/ACADEMIC_WILDFIRE_MODELS_BENCHMARK.md)](docs/ACADEMIC_WILDFIRE_MODELS_BENCHMARK.md)**: Deep dive into physical Level-Set PDEs, Cellular Automata, Google NDWS benchmark, and research roadmaps.
-*   📓 **[Wildfire Ground-Truth & Benchmark Tutorial (docs/WILDFIRE_GROUND_TRUTH_DATA_TUTORIAL.md)](docs/WILDFIRE_GROUND_TRUTH_DATA_TUTORIAL.md)**: Guide to ground-truth label datasets in `/data/wildfire_benchmark_data/` (WFIGS, CAL FIRE DINS, USGS MTBS, NASA FIRMS, WildfireSpreadTS).
-*   📕 **[Interdisciplinary Survey Report (docs/WILDFIRE_AI_SURVEY_REPORT.md)](docs/WILDFIRE_AI_SURVEY_REPORT.md)**: Comprehensive survey on CS/AI interdisciplinary research, causal inference, and WUI computer vision.
-*   📗 **[Technical Data Pipeline & GIS Specifications (src/README.md)](src/README.md)**: In-depth technical specifications for all 10 integrated geospatial datasets, mathematical formulas, and student research projects.
-*   📙 **[System Architecture & Walkthrough (src/walkthrough.md)](src/walkthrough.md)**: Step-by-step engineering walkthrough of the multi-source GIS ingestion pipeline.
-
----
-
-## 📄 License
-Released for open academic research and municipal fire safety innovation.

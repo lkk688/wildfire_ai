@@ -1,5 +1,6 @@
 """
-CAL FIRE Active Incidents & NIFC Fire Perimeters Fetcher.
+CAL FIRE incidents & perimeters fetcher -- currently returns SYNTHETIC demo geometry only (audit 2026-10-22);
+no real incident data is fetched. Names and statuses are marked synthetic.
 Fetches real-time CAL FIRE incidents and active/historical wildland fire perimeter polygons.
 """
 
@@ -24,12 +25,12 @@ def get_active_perimeters(min_lat: float = 36.8, min_lng: float = -122.6, max_la
                 ]]
             },
             "properties": {
-                "fire_name": "San Bruno Ridge Incident Perimeter",
-                "incident_id": "CALFIRE-2026-SBFD",
+                "fire_name": "SYNTHETIC demo polygon A (not a real incident)",
+                "incident_id": "SYNTHETIC-A",
                 "acres_burned": 45,
-                "containment_pct": 85,
-                "agency": "CAL FIRE / San Bruno FD",
-                "status": "Active / Containment Lines Holding",
+                "containment_pct": None,
+                "agency": "none (synthetic)",
+                "status": "synthetic demo geometry",
                 "color": "#dc2626"
             }
         },
@@ -46,12 +47,12 @@ def get_active_perimeters(min_lat: float = 36.8, min_lng: float = -122.6, max_la
                 ]]
             },
             "properties": {
-                "fire_name": "San Jose Alum Rock Wildfire Perimeter",
-                "incident_id": "CALFIRE-2026-SCU",
+                "fire_name": "SYNTHETIC demo polygon B (not a real incident)",
+                "incident_id": "SYNTHETIC-B",
                 "acres_burned": 320,
-                "containment_pct": 40,
-                "agency": "CAL FIRE SCU Unit / San Jose FD",
-                "status": "Active / Rapid Spread in Brush",
+                "containment_pct": None,
+                "agency": "none (synthetic)",
+                "status": "synthetic demo geometry",
                 "color": "#ef4444"
             }
         },
@@ -71,7 +72,7 @@ def get_active_perimeters(min_lat: float = 36.8, min_lng: float = -122.6, max_la
                 "fire_name": "CZU Lightning Complex Historical Perimeter",
                 "incident_id": "CALFIRE-CZU-HIST",
                 "acres_burned": 86500,
-                "containment_pct": 100,
+                "containment_pct": None,
                 "agency": "CAL FIRE CZU San Mateo-Santa Cruz Unit",
                 "status": "Historical Scar / Regeneration Zone",
                 "color": "#b91c1c"

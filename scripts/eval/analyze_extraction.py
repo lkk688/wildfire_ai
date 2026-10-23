@@ -39,6 +39,8 @@ from scripts.eval.vlm_metrics import _cluster_boot  # noqa: E402
 
 EXT = ROOT / "output" / "experiments" / "vlm_extraction"
 SPL = ROOT / "output" / "splits"
+# main T2 set (403 pairs); the larger XL set is evaluated separately in c1_scaleup.py
+MAIN_PAIR_FILES = [SPL / "pairs_test.jsonl", SPL / "pairs_test_large.jsonl"]
 GEOM = ROOT / "output" / "features" / "geometry.parquet"
 
 ROOF_MAP = {"Asphalt": "asphalt_shingle", "Tile": "clay_concrete_tile", "Metal": "metal", "Wood": "wood_shake",
@@ -63,7 +65,7 @@ def load_records() -> dict:
             for line in p.read_text().splitlines():
                 r = json.loads(line)
                 recs[r["global_id"]] = r
-    for pp in sorted(SPL.glob("pairs_test*.jsonl")):
+    for pp in MAIN_PAIR_FILES:
         for line in pp.read_text().splitlines():
             q = json.loads(line)
             for side in ("destroyed", "survived"):
@@ -184,7 +186,7 @@ def decision_head(ext: pd.DataFrame, recs: dict) -> list:
             ci = _cluster_boot(ev, lambda i: roc_auc_score(y[i], p[i]) if len(set(y[i])) == 2 else np.nan)
             out.append({"features": name, "eval": f"pilot {ps}", "n": int(len(te)),
                         "auroc": float(roc_auc_score(y, p)), "ci95": ci})
-        pfiles = sorted(SPL.glob("pairs_test*.jsonl"))
+        pfiles = MAIN_PAIR_FILES
         if pfiles:
             pm = o.set_index("global_id")["p_" + name]
             accs, evs = [], []

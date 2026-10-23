@@ -1,4 +1,7 @@
 """
+LEAKY INPUTS (audit 2026-10-22): the 'VLM-assimilated physics' path read ground-truth defensive actions and Zone 0
+text that was generated from the true label. Do not report any result from it.
+
 VLM-to-Physics Data Assimilation Bridge (Physical Simulation Parameter Gateway)
 Translates high-dimensional multimodal VLM structural vulnerability attributions
 into quantitative 2D parameter fields for:

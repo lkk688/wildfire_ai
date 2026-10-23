@@ -104,10 +104,10 @@ def vlm_auc(run, evidence):
         r = json.loads(line)
         if r["evidence"] == evidence and (r["global_id"] not in best or r.get("parse_ok")):
             best[r["global_id"]] = r
-    ok = [r for r in best.values() if r.get("parse_ok")]
+    ok = list(best.values())  # intention-to-treat: unparsed -> 0.5
     if len(ok) < 100:
         return None
-    return roc_auc_score([r["label"] == "Destroyed" for r in ok], [r["p_destroyed"] for r in ok])
+    return roc_auc_score([r["label"] == "Destroyed" for r in ok], [r["p_destroyed"] if r.get("parse_ok") else 0.5 for r in ok])
 
 
 def mechanism():

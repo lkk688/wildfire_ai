@@ -1,6 +1,6 @@
 """
 Tabular reference scores on the exposure-controlled pair sets
-(output/splits/pairs_test*.jsonl): HGB trained on 2019-2023 train/val events.
+(output/splits/pairs_test.jsonl + pairs_test_large.jsonl; the XL set is evaluated in c1_scaleup.py): HGB trained on 2019-2023 train/val events.
 
 Output: output/experiments/pairs_reference.md
 """
@@ -27,7 +27,7 @@ def main() -> None:
     df["log_nn_dist"] = np.log1p(df["nn_dist_m"])
     tr = df[df["split"].isin(["train", "val"])]
     D = df.set_index("GLOBALID")
-    pfiles = sorted((ROOT / "output" / "splits").glob("pairs_test*.jsonl"))
+    pfiles = [ROOT / "output" / "splits" / f for f in ("pairs_test.jsonl", "pairs_test_large.jsonl")]
     pairs = [json.loads(line) for f in pfiles for line in f.read_text().splitlines()]
     gd = [p["destroyed"]["global_id"] for p in pairs]
     gs = [p["survived"]["global_id"] for p in pairs]

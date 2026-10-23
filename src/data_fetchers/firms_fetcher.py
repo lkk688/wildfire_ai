@@ -1,5 +1,5 @@
 """
-NASA FIRMS Active Thermal Hotspots Fetcher.
+NASA FIRMS hotspots fetcher -- currently returns SYNTHETIC demo points only (audit 2026-10-22).
 Fetches real-time VIIRS (375m) and MODIS satellite active thermal anomaly hotspots.
 """
 
@@ -22,7 +22,7 @@ def get_thermal_hotspots(min_lat: float = 36.8, min_lng: float = -122.6, max_lat
                 "brightness_kelvin": 342.5,
                 "frp_mw": 14.8,  # Fire Radiative Power (MW)
                 "confidence": "High (92%)",
-                "acquisition_time": "Live Stream (Acquired 45 mins ago)",
+                "acquisition_time": "synthetic (not satellite data)",
                 "day_night": "Daytime Pass"
             }
         },
@@ -37,7 +37,7 @@ def get_thermal_hotspots(min_lat: float = 36.8, min_lng: float = -122.6, max_lat
                 "brightness_kelvin": 368.2,
                 "frp_mw": 48.3,
                 "confidence": "Nominal (85%)",
-                "acquisition_time": "Live Stream (Acquired 20 mins ago)",
+                "acquisition_time": "synthetic (not satellite data)",
                 "day_night": "Daytime Pass"
             }
         },

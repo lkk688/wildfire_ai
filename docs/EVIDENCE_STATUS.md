@@ -1,6 +1,6 @@
 # Evidence Status Ledger
 
-Last updated: 2026-10-19 (response to Review 1019). This file is the single source of truth for what the
+Last updated: 2026-10-22 (response to Review 1019; paper tables now count unparsed VLM answers as p = 0.5, intention-to-treat, which moves reported values by ≤ .007 except the Qwen post-fire control, .846 parsed-only → .863). This file is the single source of truth for what the
 project has *shown*, and it supersedes conflicting numbers in the README, the CVPR proposal and the internal
 progress reports.
 
@@ -105,11 +105,11 @@ Implications for next steps:
 
 | Finding | Evidence |
 |---|---|
-| Building-level ceiling is low: clean inspector attributes reach only 0.62–0.65 near-neighbour pair accuracy (0.89 with missingness leakage) | `output/experiments/exposure_control.md` |
+| Building-level ceiling is low: inspector attribute values reach only ~0.63–0.65 near-neighbour pair accuracy (0.87–0.89 with missingness leakage) | `pairs_reference.md` (fully observed subset 0.646, 82 pairs), `missingness_ablation.md` (random-imputed 0.626) |
 | Perception is adequate: post-fire positive control AUROC Sonnet 0.959, Haiku 0.924, Qwen 0.846 | `vlm_conditions/postfire_*` |
 | Frozen DINOv2/SigLIP + LR beats every VLM direct judgment (0.67–0.71 vs 0.52–0.61) but is at chance on pairs (0.52–0.56): it captures location/exposure, not building vulnerability | `embedding_baseline/` |
 | Pairwise (exposure-controlled): Sonnet 0.620, MiniMax 0.605, Qwen 0.589, Haiku 0.571 vs tabular metadata 0.604; Sonnet image − meta +0.039 [+0.004, +0.085] | `vlm_pairs/`, `pairs_reference.md` |
-| Qwen ignores the image in direct judgment (image − mismatched −0.004) | `vlm_conditions/pilot_qwen38_diag` |
+| ~~Qwen ignores the image in direct judgment (image − mismatched −0.004)~~ superseded: val replication +0.094 [+0.002, +0.177] (§4c) | `vlm_conditions/pilot_qwen38_diag` |
 | VLM-as-sensor (Qwen extraction → LR head) fails: pairs 0.523; fine-grained attributes not rotation-stable | `vlm_extraction/extract_qwen38/analysis.md` |
 | DINS points are not a valid spacing reference; Overture 2026 is post-fire | design doc §4 |
 
@@ -126,7 +126,7 @@ run; no analysis rule changed.
 | Building state is perceivable in these crops (post-fire control) | Sonnet 0.959 [0.948, 0.970], Haiku 0.924, Qwen 0.846 (106/118 parsed); 118/238 with a capture ≤365 d after the fire |
 | Open models lag in *perception*, not only reasoning | post-fire AUROC: Qwen 0.846 [0.791, 0.917] vs Sonnet 0.959 (CIs do not overlap) |
 | VLM direct judgment uses the image (own vs mismatched) — but its absolute level stays below a frozen-embedding head | Sonnet: test +0.068, **confirmed** on val +0.155 [+0.074, +0.234] (Holm p=0.0015); Qwen val +0.094 [+0.002, +0.177] |
-| DINS attribute *values* carry ~0.63 pair accuracy; ~0.88 comes from missingness | same population: missingness indicators only 0.883, random-imputed values 0.626, clean subset 0.62–0.65 (`missingness_ablation.md`, `exposure_control.md`) |
+| DINS attribute *values* carry ~0.63 pair accuracy; ~0.88 comes from missingness | same population: missingness indicators only 0.883, random-imputed values 0.626, fully observed subset 0.646 (`missingness_ablation.md`, `pairs_reference.md`) |
 | Frozen-image embeddings rank by location more than by building | AUROC 0.665–0.714 (test), 0.672 (val) vs pairs 0.52–0.56 (test), 0.571 (val) |
 | Zero-shot VLM direct judgment does not beat a frozen-embedding linear head | VLMs 0.52–0.61 (test), Sonnet 0.641 (val) vs DINOv2 head 0.665–0.714 (test), 0.672 (val) |
 | VLM-as-sensor fails *for Qwen3.8-27B at 0.3–0.6 m with this schema and 971 training buildings* | rotation agreement 58–66% on fine attributes; head pair acc 0.523 (Sonnet extraction + head untested) |
