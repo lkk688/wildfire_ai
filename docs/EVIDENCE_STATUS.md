@@ -187,6 +187,8 @@ run; no analysis rule changed.
 |---|---|---|
 | Sonnet with the map | .715 [.544, .861] | +.064 [+.019, +.139] |
 | Sonnet text-only | .652 | — |
+| Qwen3.8-27B with the map | .676 [.557, .784] | +.030 [−.061, +.120] |
+| Qwen3.8-27B text-only | .645 | — |
 | Distance (residual within pairs) | .718 | — |
 | Wind-adjusted rule | .703 | — |
 
