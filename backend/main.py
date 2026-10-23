@@ -458,7 +458,7 @@ def query_corridor(req: QueryCorridorRequest):
 
 @app.get("/api/vlm/benchmark/cases")
 def get_vlm_benchmark_cases():
-    """Retrieve all 50 ground-truth DINS benchmark cases with expert diagnosis."""
+    """The 50 dev-set cases: DINS attributes, verified imagery epochs and ERA5 fire weather."""
     try:
         return vlm_service.get_catalog()
     except Exception as e:
@@ -467,7 +467,7 @@ def get_vlm_benchmark_cases():
 
 @app.get("/api/vlm/benchmark/results")
 def get_vlm_benchmark_results():
-    """Retrieve pre-computed multi-model evaluations for all 50 benchmark cases."""
+    """Stored text-only model outputs for the 50 dev-set cases."""
     try:
         return vlm_service.get_all_results()
     except Exception as e:
@@ -476,7 +476,7 @@ def get_vlm_benchmark_results():
 
 @app.get("/api/vlm/benchmark/metrics")
 def get_vlm_benchmark_metrics():
-    """Retrieve cross-model comparative metrics scoreboard (MiniMax, Claude, Qwen)."""
+    """Dev-set metrics of the stored text-only runs (confounded set; not a held-out result)."""
     try:
         return vlm_service.get_metrics_scoreboard()
     except Exception as e:
@@ -486,9 +486,10 @@ def get_vlm_benchmark_metrics():
 @app.get("/api/vlm/benchmark/image/{case_id}")
 def get_vlm_benchmark_image(
     case_id: str,
-    epoch: str = Query("prefire", description="Temporal epoch: prefire (2020-02), postfire (2021-10 GT), or current (2024-2026)")
+    epoch: str = Query("prefire", description="prefire | postfire | current (verified Wayback captures; see multi_epoch_images "
+                                              "in /api/vlm/benchmark/cases for capture dates) | streetview")
 ):
-    """Serve high-resolution Zoom-18 aerial orthoimagery for benchmark parcel by temporal epoch."""
+    """Serve a case image. Aerial epochs are verified Esri Wayback crops; a missing epoch is a 404, never a substitute."""
     img_path = vlm_service.get_image_path(case_id, epoch=epoch)
     if not img_path:
         raise HTTPException(status_code=404, detail=f"Image for case {case_id} (epoch={epoch}) not found")
@@ -497,6 +498,15 @@ def get_vlm_benchmark_image(
         media_type="image/jpeg",
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
     )
+
+
+@app.get("/api/vlm/research-results")
+def get_vlm_research_results():
+    """This project's held-out evaluation numbers (parsed from paper/numbers.tex)."""
+    try:
+        return gis_service.research_evidence()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/vlm/predict")

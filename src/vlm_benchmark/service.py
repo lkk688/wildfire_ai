@@ -14,6 +14,10 @@ from src.vlm_benchmark.evaluate_baselines import DINSBaselineEvaluator
 BENCHMARK_DIR = Path("/Developer/wildfire_ai/SBFire_SJSU-20260730T030001Z-1-001/benchmark_results")
 IMAGES_DIR = BENCHMARK_DIR / "images"
 BENCHMARK_JSON = BENCHMARK_DIR / "dins_vlm_benchmark_50.json"
+# Written by scripts/data/fetch_dev_case_imagery.py and scripts/data/fetch_dev_case_weather.py
+IMAGERY_PROVENANCE_JSON = "dev_case_imagery_provenance.json"
+FIRE_WEATHER_JSON = "dev_case_fire_weather.json"
+VERIFIED_EPOCHS = ("prefire", "postfire", "current")
 
 
 # Fields that earlier versions generated from the true outcome label. They are now always None.
@@ -21,6 +25,18 @@ LABEL_CONDITIONED_DEMO_FIELDS = [
     "bellwether_prediction", "academic_simulations", "insurance_actuarial",
     "expert_diagnosis", "structured_assessment", "incident_forensics",
 ]
+
+
+# How the stored runs in baseline_evaluation_*.json were produced (src/vlm_benchmark/evaluate_baselines.py).
+STORED_RUN_NOTES = {
+    "input": "text only: DINS building attributes, incident name, county and coordinates; no image",
+    "prompt_weather_text": ("the prompt states the same weather for every case ('Red Flag Warning conditions, wind "
+                            "gusts 25-35 mph, dead fuel moisture < 6%, surrounding chaparral/timber brush'); this is "
+                            "prompt text, not observed weather"),
+    "dataset": "50-case development set: 25 destroyed (10 fires) vs 25 survived (all Quail Fire), so fire identity "
+               "confounds the label; not a held-out evaluation",
+    "trace": "stored responses are truncated to 500 characters",
+}
 
 
 class VLMBenchmarkService:
@@ -31,6 +47,59 @@ class VLMBenchmarkService:
         self._cached_catalog = None
         self._cached_results = None
         self._dins_lookup = None
+
+    def _load_json(self, name: str) -> Dict[str, Any]:
+        p = self.benchmark_dir / name
+        if not p.exists():
+            return {}
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception as e:  # noqa: BLE001
+            print(f"Error loading {p}: {e}")
+            return {}
+
+    def _epoch_entry(self, case_id: str, epoch: str, prov: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """One imagery epoch, described only by its verified Wayback provenance (never by a fixed date)."""
+        names = {"prefire": "Pre-fire", "postfire": "Post-fire", "current": "Latest available"}
+        rules = {
+            "prefire": "latest Wayback capture before the incident start",
+            "postfire": "earliest Wayback capture within 365 days after the incident start",
+            "current": "capture served by the newest Wayback release",
+        }
+        entry: Dict[str, Any] = {
+            "epoch": epoch,
+            "label": names[epoch],
+            "selection_rule": rules[epoch],
+            "url": f"/api/vlm/benchmark/image/{case_id}?epoch={epoch}",
+            "exists": False,
+            "available": False,
+            "capture_date": None,
+            "unavailable_reason": None,
+            "source": "Esri World Imagery Wayback (capture date from the release metadata layer, SRC_DATE)",
+        }
+        if not prov:
+            entry["unavailable_reason"] = "not fetched (run scripts/data/fetch_dev_case_imagery.py)"
+            return entry
+        f = self.images_dir / f"case_{case_id}_{epoch}_verified.jpg"
+        entry.update({
+            "capture_date": prov.get("capture_date"),
+            "release_date": prov.get("release_date"),
+            "release_identifier": prov.get("release_identifier"),
+            "release_id": prov.get("release_id"),
+            "capture_source": prov.get("capture_source"),
+            "capture_provider": prov.get("capture_provider"),
+            "capture_resolution_m": prov.get("capture_resolution_m"),
+            "days_before_fire": prov.get("staleness_days") if epoch != "current" else None,
+            "zoom": prov.get("zoom"),
+            "size_px": prov.get("size_px"),
+            "image_sha256": prov.get("image_sha256"),
+        })
+        if prov.get("accepted") and f.exists():
+            entry["exists"] = entry["available"] = True
+        else:
+            entry["unavailable_reason"] = prov.get("reject_reason") or "image file missing"
+            entry["url"] = None
+        return entry
 
     def _load_dins_lookup(self) -> Dict[int, Any]:
         """Load full DINS GeoJSON lookup table for assessor and structural enrichment."""
@@ -61,6 +130,8 @@ class VLMBenchmarkService:
             data = json.load(f)
 
         dins_lookup = self._load_dins_lookup()
+        imagery = self._load_json(IMAGERY_PROVENANCE_JSON).get("cases", {})
+        weather = self._load_json(FIRE_WEATHER_JSON).get("cases", {})
         items = data.get("items", [])
         enriched_items = []
         for item in items:
@@ -69,49 +140,45 @@ class VLMBenchmarkService:
             cid_int = int(item["id"]) if str(item["id"]).isdigit() else None
             dins_props = dins_lookup.get(cid_int, {}) if cid_int is not None else {}
 
-            enriched["image_url"] = f"/api/vlm/benchmark/image/{case_id}?epoch=prefire"
-            enriched["has_image"] = (self.images_dir / f"case_{case_id}.jpg").exists()
+            prov = imagery.get(case_id, {})
+            epochs = {ep: self._epoch_entry(case_id, ep, prov.get(ep)) for ep in VERIFIED_EPOCHS}
+            enriched["incident_start"] = prov.get("fire_start") or (weather.get(case_id) or {}).get("incident_start")
+            enriched["image_url"] = epochs["prefire"]["url"]
+            enriched["has_image"] = epochs["prefire"]["available"]
 
             # APN & Assessor Records
             apn = dins_props.get("APN") or item.get("apn") or "Unknown"
             year_built = item.get("year_built") or dins_props.get("YEARBUILT")
             assessed_val = item.get("assessed_value") or dins_props.get("ASSESSEDIMPROVEDVALUE")
 
-            # Chapter 7A Compliance Evaluation
+            # Chapter 7A: only the construction year relative to 2008 is known. Compliance itself was never inspected.
             try:
                 year_num = int(year_built) if year_built is not None else None
             except (ValueError, TypeError):
                 year_num = None
-
+            basis = ("California Building Code Chapter 7A applies to new construction in designated fire hazard "
+                     "zones from 2008; whether this parcel was in such a zone, and whether the building complied, "
+                     "is not recorded here.")
             if year_num is not None:
-                if year_num >= 2008:
-                    chapter_7a = {
-                        "is_compliant": True,
-                        "code_status": "Post-Chapter 7A (2008+ Mandatory Code)",
-                        "badge_type": "compliant",
-                        "cutoff_year": 2008,
-                        "standard_summary": "Mandated compliance with California CBC Title 24 Chapter 7A strict ember-resistant standards (Class A roof, <=1/8-inch non-combustible mesh vents, dual-pane tempered glass, non-combustible siding, boxed eaves).",
-                        "regulatory_basis": "California Building Code Title 24, Part 2, Chapter 7A (Mandatory in WUI Zones post-2008)",
-                    }
-                else:
-                    chapter_7a = {
-                        "is_compliant": False,
-                        "code_status": "Pre-Chapter 7A (1900-2007 Historical Standard)",
-                        "badge_type": "non_compliant",
-                        "cutoff_year": 2008,
-                        "standard_summary": "Constructed prior to mandatory Chapter 7A enforcement; vulnerable to attic ember intrusion through legacy oversized mesh (>1/8-inch), unenclosed eaves, and combustible siding seams.",
-                        "regulatory_basis": "Pre-Standard Construction (Built before 2008 WUI code enactment)",
-                    }
+                chapter_7a = {
+                    "is_compliant": None,
+                    "built_after_2008": year_num >= 2008,
+                    "code_status": "Built 2008 or later" if year_num >= 2008 else "Built before 2008",
+                    "badge_type": "unknown",
+                    "cutoff_year": 2008,
+                    "standard_summary": basis,
+                    "regulatory_basis": "Derived from YEARBUILT only",
+                }
             else:
                 chapter_7a = {
                     "is_compliant": None,
-                    "code_status": "Year Built Unrecorded",
+                    "built_after_2008": None,
+                    "code_status": "Year built not recorded",
                     "badge_type": "unknown",
                     "cutoff_year": 2008,
-                    "standard_summary": "Construction year unrecorded in county assessor records; visual inspection of roof and facade texture required.",
-                    "regulatory_basis": "Assessor Year Built Unrecorded",
+                    "standard_summary": basis,
+                    "regulatory_basis": "YEARBUILT missing",
                 }
-
 
             enriched["assessor_record"] = {
                 "apn": apn,
@@ -119,43 +186,28 @@ class VLMBenchmarkService:
                 "assessed_improved_value": assessed_val,
                 "assessed_value_display": f"${assessed_val:,.0f}" if isinstance(assessed_val, (int, float)) and assessed_val > 0 else "N/A",
                 "chapter_7a": chapter_7a,
+                "source": "CAL FIRE DINS record (APN, YEARBUILT, ASSESSEDIMPROVEDVALUE)",
             }
 
-            # Multi-temporal imagery links
+            # Multi-temporal imagery: verified Wayback captures only (scripts/data/fetch_dev_case_imagery.py).
             has_streetview = (self.images_dir / f"case_{case_id}_streetview.jpg").exists()
-            enriched["multi_epoch_images"] = {
-                "prefire": {
-                    "url": f"/api/vlm/benchmark/image/{case_id}?epoch=prefire",
-                    "label": "Pre-fire image (Wayback release WB_2020_R01)",
-                    "date": "capture date not verified",
-                    "role": "VLM physical deduction input with intact structural envelope",
-                    "badge": "Pre-Fire Baseline",
-                    "exists": (self.images_dir / f"case_{case_id}_prefire.jpg").exists() or (self.images_dir / f"case_{case_id}.jpg").exists(),
-                },
-                "postfire": {
-                    "url": f"/api/vlm/benchmark/image/{case_id}?epoch=postfire",
-                    "label": "Post-fire image",
-                    "date": "capture date not verified",
-                    "role": "CAL FIRE post-fire damage assessment ground truth evidence",
-                    "badge": "Post-fire image",
-                    "exists": (self.images_dir / f"case_{case_id}_postfire.jpg").exists(),
-                },
-                "current": {
-                    "url": f"/api/vlm/benchmark/image/{case_id}?epoch=current",
-                    "label": "Current imagery",
-                    "date": "capture date not verified",
-                    "role": "Current parcel recovery and vegetative regrowth status",
-                    "badge": "Latest Satellite",
-                    "exists": (self.images_dir / f"case_{case_id}_current.jpg").exists(),
-                },
-                "streetview": {
-                    "url": f"/api/vlm/benchmark/image/{case_id}?epoch=streetview",
-                    "label": "Google Street View Micro Ground Facade",
-                    "date": "Ground Level Micro Perspective",
-                    "role": "Micro facade envelope, roof eaves, fence junctions, and Zone 0 defensible buffer",
-                    "badge": "Micro Ground Facade",
-                    "exists": has_streetview,
-                },
+            enriched["multi_epoch_images"] = dict(epochs)
+            enriched["multi_epoch_images"]["streetview"] = {
+                "epoch": "streetview",
+                "url": f"/api/vlm/benchmark/image/{case_id}?epoch=streetview" if has_streetview else None,
+                "label": "Street-level photo",
+                "capture_date": None,
+                "unavailable_reason": None if has_streetview else "no street-level photo stored for this case",
+                "source": "Street-level photograph stored with the dev set; capture date not recorded",
+                "exists": has_streetview,
+                "available": has_streetview,
+            }
+
+            # Fire weather: ERA5 via Open-Meteo (scripts/data/fetch_dev_case_weather.py)
+            enriched["fire_weather"] = weather.get(case_id) or {
+                "available": False,
+                "reason": "not fetched (run scripts/data/fetch_dev_case_weather.py)",
+                "source": "ERA5 reanalysis via Open-Meteo (may understate local gusts)",
             }
 
             # Micro Street View Metadata & Facade Annotations
@@ -190,50 +242,51 @@ class VLMBenchmarkService:
             for k in LABEL_CONDITIONED_DEMO_FIELDS:
                 enriched[k] = None
 
-            # Community Type & Residential Subdivision Focus
-            is_residential = (
-                item.get("incident") == "Nelson"
-                or cid_int in [175947, 175948, 175949, 176073]
-            )
-            enriched["is_residential_focus"] = is_residential
-            enriched["community_type"] = (
-                "Suburban Residential Subdivision" if is_residential else "Rural WUI Estate / Canyon Parcel"
-            )
-
             enriched["removed_label_conditioned_fields"] = LABEL_CONDITIONED_DEMO_FIELDS
             enriched_items.append(enriched)
 
+        incidents: Dict[str, Dict[str, Any]] = {}
+        for it in enriched_items:
+            name = str(it.get("incident") or "").strip()
+            rec = incidents.setdefault(name, {"incident": name, "county": it.get("county"),
+                                              "start_date": it.get("incident_start"), "cases": 0})
+            rec["cases"] += 1
+        n_ok = {ep: sum(1 for it in enriched_items if it["multi_epoch_images"][ep]["available"])
+                for ep in VERIFIED_EPOCHS}
         return {
             "total": len(enriched_items),
-            "generated_at": data.get("generated_at"),
+            "generated_at": data.get("generated_at") or data.get("created_at"),
             "evidence_status": "dev_set_demo",
             "evidence_notes": [
                 "These 50 cases are a development set (used to write rules and SFT targets); "
                 "held-out evaluation uses output/splits/pilot_test.jsonl.",
                 "Fields listed in removed_label_conditioned_fields were generated from the true outcome label and are now always null.",
-                "Imagery release WB_2020_R01 is a release date; per-location capture dates were not verified "
-                "for these cases (see src/vlm_benchmark/imagery_provenance.py).",
+                "Imagery capture dates are read per location from Esri Wayback metadata; an epoch with no verified "
+                "capture is marked unavailable instead of being replaced by another image.",
             ],
             "data_sources": {
-                "ground_truth": "CAL FIRE Damage Inspection Specialist (DINS) Post-Fire Forensic Database",
-                "aerial_imagery": "ESRI Wayback Historical Orthoimagery (WB_2020_R01, WB_2021_R17) & ESRI World Imagery",
-                "temporal_epochs": ["2020-02 Pre-Fire", "2021-10 Post-Fire GT", "2024-2026 Current"],
-                "fire_incidents": ["Quail Fire (Solano County, CA)", "Apple Fire (Riverside County)", "Nelson Fire (Butte County)"],
-                "environmental_forcing": "Red Flag Warning, 25-35 mph gusts, Dead Fuel Moisture (DFM) < 6%, Chaparral/Timber brush",
+                "ground_truth": "CAL FIRE Damage Inspection (DINS) records",
+                "aerial_imagery": "Esri World Imagery Wayback, per-location capture dates (SRC_DATE)",
+                "imagery_coverage": {ep: f"{n}/{len(enriched_items)}" for ep, n in n_ok.items()},
+                "fire_weather": "ERA5 reanalysis via Open-Meteo archive API (incident start date + 2 days)",
+                "fire_incidents": sorted(incidents.values(), key=lambda r: -r["cases"]),
             },
             "items": enriched_items,
         }
 
     def get_image_path(self, case_id: str, epoch: str = "prefire") -> Optional[Path]:
-        """Get local file path for case image by temporal epoch or streetview."""
+        """Local file for a case image. Aerial epochs serve only the verified Wayback crops; nothing is substituted."""
         epoch_clean = (epoch or "prefire").lower().strip()
-        epoch_file = self.images_dir / f"case_{case_id}_{epoch_clean}.jpg"
-        if epoch_file.exists():
-            return epoch_file
-        if epoch_clean != "prefire":
-            return None  # never substitute another epoch's image (audit 2026-10-22)
-        p = self.images_dir / f"case_{case_id}.jpg"
-        return p if p.exists() else None
+        if not str(case_id).isdigit():
+            return None
+        if epoch_clean in VERIFIED_EPOCHS:
+            prov = self._load_json(IMAGERY_PROVENANCE_JSON).get("cases", {}).get(str(case_id), {}).get(epoch_clean)
+            p = self.images_dir / f"case_{case_id}_{epoch_clean}_verified.jpg"
+            return p if prov and prov.get("accepted") and p.exists() else None
+        if epoch_clean == "streetview":
+            p = self.images_dir / f"case_{case_id}_streetview.jpg"
+            return p if p.exists() else None
+        return None
 
     def get_all_results(self) -> Dict[str, Any]:
         """Aggregate evaluation results from all 4 models by case_id."""
@@ -274,6 +327,7 @@ class VLMBenchmarkService:
         return {
             "model_summaries": model_summaries,
             "cases": by_case,
+            "run_notes": STORED_RUN_NOTES,
         }
 
     def get_metrics_scoreboard(self) -> Dict[str, Any]:
@@ -294,9 +348,11 @@ class VLMBenchmarkService:
                 "false_alarm_rate": round(m.get("false_alarm_rate_FP", 0.0) * 100, 1),
                 "locus_attribution_accuracy": round(m.get("locus_attribution_accuracy", 0.0) * 100, 1),
                 "confusion_matrix": cm,
+                "total_evaluated": data.get("total_evaluated", 0),
+                "evaluated_at": data.get("evaluated_at"),
             })
 
-        return {"scoreboard": scoreboard}
+        return {"scoreboard": scoreboard, "run_notes": STORED_RUN_NOTES}
 
     def run_live_prediction(self, model_name: str, case_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute on-demand live prediction for any model and case."""
