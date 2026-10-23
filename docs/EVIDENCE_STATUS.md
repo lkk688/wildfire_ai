@@ -163,6 +163,34 @@ run; no analysis rule changed.
 
 **Level 4 — reasoning only, no data**: post-fire SFT closes Qwen's gap; street-level view adds to nadir; calibration/abstention as differentiator; decision-time advice.
 
+## 4d. Feasibility pilots (2026-10-22/23; exploratory, Level 1, not pre-registered)
+
+**Pilot A: community-scale reasoning.** Communities are 0.005° cells (about 500 m) with at least 10 inspected homes. The label is the share destroyed, and high loss means at least 50%. The test set is 377 cells from 22 fires in 2024–25. Inputs are Wayback z16 pre-fire crops with verified capture dates; the fire name and inspection counts are hidden. Scripts: `scripts/data/build_community_cells.py`, `worldcover_features.py`, `scripts/eval/run_community_vlm.py`, `community_eval.py`.
+
+| Score (AUROC for high loss; within-fire pair accuracy) | All test fires | 20 WUI fires | Eaton + Palisades |
+|---|---|---|---|
+| WorldCover vegetation within 1 km (no fitting) | .44 / .39 | .79 / .63 | .41 / .38 |
+| Assessor aggregates, HGB fitted on 2019–23 cells | .66 / .64 | .79 / .58 | .62 / .64 |
+| Sonnet, zero-shot | .45 / .39 | .67 / .57 | .45 / .38 |
+| Qwen3.8-27B, zero-shot | .51 / .45 | .59 / .57 | .50 / .44 |
+
+- Sonnet's stated distance to wildland correlates ρ = .53 with WorldCover; Qwen's correlates ρ = .48.
+- The wildland-proximity heuristic works for WUI fires but reverses in the two 2025 urban conflagrations. There, interior-of-development cells lost more homes (43%) than cells embedded in wildland (29%), and VLM reasoning inherits the reversal.
+
+**Pilot B: evacuation-decision replay.**
+- *Data.* Decision points come from NIFC Operational Data Archive perimeter versions, timed by when each version entered the archive. Communities are Microsoft-footprint cells, which are outcome-independent. Wind is ERA5 at decision time. The label is whether the fire eventually reached the cell (final perimeter + 100 m).
+- *Baselines.* Within 2 km of the fire edge, distance alone scores AUROC .58, the wind-adjusted rule .71 and a logistic model .74–.83.
+- *VLM test.* 165 distance-matched pairs from 8 test fires:
+
+| Model | Pair accuracy | Gain from the map over text-only (fire bootstrap) |
+|---|---|---|
+| Sonnet with the map | .715 [.544, .861] | +.064 [+.019, +.139] |
+| Sonnet text-only | .652 | — |
+| Distance (residual within pairs) | .718 | — |
+| Wind-adjusted rule | .703 | — |
+
+- *Limits.* Mapped perimeters lag the fire (Eaton's first mapped perimeter came about 5 h after ignition). ERA5 misses local gusts. Eaton is the weakest fire (.39). Scripts: `scripts/data/evac_perimeter_inventory.py`, `build_evac_replay.py`, `ms_building_cells.py`, `render_evac_maps.py`, `scripts/eval/evac_baselines.py`, `run_evac_vlm.py`.
+
 ## 5. Rules going forward
 
 1. The 50 legacy cases and their 10 events are **dev only**. Never report them as test results.
