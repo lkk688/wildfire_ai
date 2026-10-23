@@ -1,3 +1,7 @@
+> **ARCHIVED (2026-10-23).** Describes the pre-2026-10-22 demo, whose fetchers returned hard-coded or synthetic data
+> (fake incidents, constant weather, a sine-wave 'LiDAR' slope, a grid of fake buildings). Those fetchers were deleted;
+> the map now uses real public sources listed in `backend/live_sources.py`.
+
 # Wildfire Risk Mitigation Pilot: Comprehensive Multi-Source Technical Documentation
 
 ## Executive Summary & System Overview

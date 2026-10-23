@@ -1,9 +1,8 @@
 """
 FastAPI Backend Application for Wildfire Risk Mitigation Dashboard
-Serves Bellwether GeoTIFF layers, Sentinel-2 STAC layers, CAL FIRE FHSZ insurance maps,
-CAL FIRE Active Incidents & Perimeters, NASA FIRMS hotspots, CDEC Fuel Moisture,
-USGS 3DEP Terrain Slope, NOAA HRRR live weather, Microsoft Building Footprints,
-San Mateo & San Jose multi-region support, and 130ft radiant heat corridor queries.
+Map layers come from real sources only: Bellwether GeoTIFFs (partner data), NIFC / CAL FIRE perimeters and incidents,
+NASA FIRMS, CDEC RAWS, NOAA HRRR (Open-Meteo), NWS alerts, USGS 3DEP, Sentinel-2, CAL FIRE FHSZ, ESA WorldCover and
+Microsoft building footprints. See backend/live_sources.py.
 """
 
 import os
@@ -14,7 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend.services import GISDataService, STATIC_DIR
+from backend import live_sources as live
+from backend.services import GISDataService, STATIC_DIR, REGION_BOUNDS, parse_bbox
 from backend.ai import WildfireAIAgent, AIConfig
 from src.academic_models import (
     RothermelLevelSetSimulator,
@@ -75,46 +75,17 @@ class AcademicSimulationRequest(BaseModel):
 
 
 
-# Audit 2026-10-22: these endpoints serve synthetic or hard-coded values (not real feeds). Every JSON object they return
-# is tagged so no client can mistake it for data.
-SYNTHETIC_PATHS = {
-    "/api/layers/buildings", "/api/layers/calfire-perimeters", "/api/layers/firms-hotspots", "/api/layers/fuel-moisture",
-    "/api/layers/terrain-slope", "/api/layers/calfire", "/api/weather/live", "/api/query-corridor", "/api/model-evaluation",
-}
-
-
-@app.middleware("http")
-async def tag_synthetic(request, call_next):
-    import json as _json
-    from starlette.responses import Response
-    resp = await call_next(request)
-    if request.url.path not in SYNTHETIC_PATHS or "application/json" not in resp.headers.get("content-type", ""):
-        return resp
-    body = b"".join([chunk async for chunk in resp.body_iterator])
-    try:
-        data = _json.loads(body)
-        if isinstance(data, dict):
-            data["synthetic"] = True
-            data["provenance_note"] = "Synthetic or hard-coded demo values; not a real data feed (audit 2026-10-22)."
-        body = _json.dumps(data).encode()
-    except ValueError:
-        pass
-    headers = {k: v for k, v in resp.headers.items() if k.lower() != "content-length"}
-    headers["X-Data-Provenance"] = "synthetic-demo"
-    return Response(content=body, status_code=resp.status_code, headers=headers, media_type="application/json")
-
-
 @app.get("/")
 def root():
     return {
         "status": "online",
         "platform": "Wildfire Risk Intelligence & Mitigation Platform",
         "capabilities": [
-            "Predictive AI Hazard Mapping (1-Year & 5-Year)",
-            "Multi-Source GIS Overlays (NASA FIRMS, CAL FIRE, RAWS, USGS 3DEP)",
-            "130ft Radiant Heat Contagion Scoping & Negative Value Quantification",
-            "Home Hardening & Insurance Discount Compliance (CDI / IBHS)",
-            "Intelligent Wildfire AI Copilot with OpenAI-Compatible Multi-Model Reasoning & Real-Time GIS Tool Calling"
+            "Bellwether 1-year / 5-year hazard overlays (partner GeoTIFFs, pilot area)",
+            "Live layers: NIFC/CAL FIRE perimeters and incidents, NASA FIRMS, CDEC RAWS fuel moisture, NOAA HRRR wind, "
+            "NWS alerts, USGS 3DEP slope, Sentinel-2 NDVI, CAL FIRE FHSZ, Microsoft building footprints",
+            "Point query combining the layers above",
+            "AI copilot whose tools call the same live sources"
         ],
     }
 
@@ -152,119 +123,116 @@ def get_bellwether_layer(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _bbox(bbox: Optional[str], region: str):
+    try:
+        return parse_bbox(bbox, region)
+    except Exception:
+        raise HTTPException(status_code=400, detail="bbox must be 'min_lon,min_lat,max_lon,max_lat'")
+
+
+def _live(fn):
+    """Run a live-source call; upstream failures become 502 with the source's error, never fabricated data."""
+    try:
+        return fn()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Upstream data source failed: {type(e).__name__}: {str(e)[:300]}")
+
+
 @app.get("/api/layers/buildings")
-def get_building_footprints():
-    """Get GeoJSON feature collection of Microsoft Building Footprints, OSM & FEMA Structures."""
-    try:
-        data = gis_service.get_building_footprints_geojson()
-        return {"success": True, "buildings": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_building_footprints(bbox: Optional[str] = Query(None), region: str = Query("san_bruno"),
+                            limit: int = Query(4000, le=8000)):
+    """Microsoft US Building Footprints inside a bbox (min_lon,min_lat,max_lon,max_lat)."""
+    return {"success": True, "buildings": _live(lambda: live.buildings(_bbox(bbox, region), limit=limit))}
 
 
-@app.get("/api/layers/calfire-perimeters")
-def get_calfire_perimeters():
-    """Get CAL FIRE active incidents & NIFC fire perimeters GeoJSON layer."""
-    try:
-        data = gis_service.get_calfire_perimeters_layer()
-        return {"success": True, "perimeters": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/api/layers/perimeters")
+def get_fire_perimeters(bbox: Optional[str] = Query(None), region: str = Query("san_bruno")):
+    """NIFC WFIGS current perimeters, CAL FIRE historical perimeters (1950+) and active CAL FIRE incidents."""
+    return {"success": True, **_live(lambda: gis_service.get_perimeters(_bbox(bbox, region)))}
 
 
 @app.get("/api/layers/firms-hotspots")
-def get_firms_hotspots():
-    """Get NASA FIRMS active thermal hotspots GeoJSON layer."""
-    try:
-        data = gis_service.get_firms_hotspots_layer()
-        return {"success": True, "hotspots": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_firms_hotspots(bbox: Optional[str] = Query(None)):
+    """NASA FIRMS VIIRS active-fire detections from the last 24 hours (default: California)."""
+    bb = _bbox(bbox, "san_bruno") if bbox else live.CA_BBOX
+    return {"success": True, "hotspots": _live(lambda: live.firms_hotspots(bb))}
 
 
 @app.get("/api/layers/fuel-moisture")
-def get_fuel_moisture_stations():
-    """Get CDEC / RAWS station fuel moisture (DFM/LFMC) GeoJSON layer."""
-    try:
-        data = gis_service.get_fuel_moisture_layer()
-        return {"success": True, "stations": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_fuel_moisture_stations(bbox: Optional[str] = Query(None), region: str = Query("san_bruno")):
+    """CDEC RAWS stations with 10-h fuel stick moisture, temperature, humidity and wind (latest hourly values)."""
+    bb = _bbox(bbox, region)
+    pad = 0.3  # include nearby stations around small views
+    return {"success": True, "stations": _live(lambda: live.fuel_moisture((bb[0] - pad, bb[1] - pad, bb[2] + pad, bb[3] + pad)))}
 
 
 @app.get("/api/layers/terrain-slope")
-def get_terrain_slope():
-    """Get USGS 3DEP LiDAR terrain slope overlay."""
-    try:
-        data = gis_service.get_terrain_slope_layer()
-        return {"success": True, "layer": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_terrain_slope(bbox: Optional[str] = Query(None), region: str = Query("san_bruno")):
+    """Slope (%) computed from the USGS 3DEP DEM, returned as a PNG overlay."""
+    return {"success": True, "layer": _live(lambda: live.slope_overlay(_bbox(bbox, region)))}
+
+
+@app.get("/api/layers/ndvi")
+def get_ndvi(bbox: Optional[str] = Query(None), region: str = Query("san_bruno")):
+    """NDVI from the latest Sentinel-2 scene with <10% cloud over the bbox (acquisition date included)."""
+    return {"success": True, "layer": _live(lambda: live.ndvi_overlay(_bbox(bbox, region)))}
+
+
+@app.get("/api/layers/fhsz")
+def get_fhsz(bbox: Optional[str] = Query(None), region: str = Query("san_bruno")):
+    """CAL FIRE Fire Hazard Severity Zones (SRA 2023, LRA 2025) as GeoJSON."""
+    return {"success": True, "zones": _live(lambda: live.fhsz(_bbox(bbox, region)))}
 
 
 @app.get("/api/bellwether-regions")
 def get_bellwether_regions():
-    """Get Bellwether region availability guide for San Jose, Santa Clara, and CONUS."""
-    try:
-        data = gis_service.get_bellwether_regions_guide()
-        return {"success": True, "guide": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/layers/calfire")
-def get_calfire_layer():
-    """Get CAL FIRE FHSZ (Fire Hazard Severity Zones) overlay metadata."""
-    try:
-        data = gis_service.get_calfire_fhsz_overlay()
-        return {"success": True, "layer": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """Regions offered in the UI and the actual coverage of the Bellwether rasters on this server."""
+    cov = gis_service.bellwether_coverage()
+    return {"success": True, "guide": {"regions": REGION_BOUNDS,
+            "bellwether_coverage": None if cov is None else {"min_lon": cov[0], "min_lat": cov[1], "max_lon": cov[2], "max_lat": cov[3]}}}
 
 
 @app.get("/api/weather/live")
-def get_live_weather():
-    """Get live NOAA HRRR meteorological and wind vector parameters."""
-    try:
-        data = gis_service.get_live_weather()
-        return {"success": True, "weather": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_live_weather(lat: Optional[float] = Query(None), lon: Optional[float] = Query(None), region: str = Query("san_bruno")):
+    """Current HRRR conditions (via Open-Meteo) and active NWS alerts at a point (default: region centre)."""
+    if lat is None or lon is None:
+        lat, lon = REGION_BOUNDS.get(region, REGION_BOUNDS["san_bruno"])["center"]
+    return {"success": True, "weather": _live(lambda: gis_service.get_weather(lat, lon))}
+
+
+@app.get("/api/weather/wind-grid")
+def get_wind_grid(bbox: Optional[str] = Query(None), region: str = Query("san_bruno"), n: int = Query(6, ge=2, le=10)):
+    """HRRR 10 m wind sampled on an n x n grid over the bbox."""
+    return {"success": True, "wind": _live(lambda: live.wind_grid(_bbox(bbox, region), n))}
 
 
 @app.get("/api/data-catalog")
 def get_data_catalog():
-    """Get comprehensive documentation catalog for all multi-source datasets."""
-    try:
-        catalog = gis_service.get_data_catalog()
-        return {"success": True, "catalog": catalog}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """Description of every data source used by the map."""
+    return {"success": True, "catalog": gis_service.get_data_catalog()}
+
+
+@app.get("/api/data-sources/status")
+def get_data_source_status(region: str = Query("san_bruno")):
+    """Fetch each source once and report whether it is reachable right now."""
+    return {"success": True, "sources": gis_service.check_sources(region)}
 
 
 @app.get("/api/risk-factors")
-def get_risk_factors():
-    """Get top 10 aggregated risk factor weights from Bellwether COG."""
+def get_risk_factors(region: Optional[str] = Query(None), is_5_year: bool = Query(False)):
+    """Bellwether risk factors aggregated over a region: contributing and mitigating features (partner data)."""
     try:
-        factors = gis_service.get_risk_factors()
-        return {"success": True, "factors": factors}
+        return {"success": True, "factors": gis_service.get_risk_factors(region, is_5_year)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/model-evaluation")
-def get_model_evaluation(
-    region: str = Query("san_bruno", description="Target region (san_bruno, san_jose, santa_cruz)")
-):
-    """
-    Get comprehensive Off-the-Shelf Model Evaluation & Gap Analysis data
-    comparing Google X Bellwether ML, CAL FIRE FHSZ, and Insurance Cat-Models.
-    """
-    try:
-        data = gis_service.get_model_evaluation_data(region=region)
-        return {"success": True, "data": data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_model_evaluation(region: str = Query("san_bruno")):
+    """Bellwether vs CAL FIRE FHSZ computed on the 100 m grid from the real layers, plus model descriptions."""
+    return {"success": True, "data": _live(lambda: gis_service.get_model_evaluation_data(region=region))}
 
 
 @app.post("/api/ai/chat")
@@ -352,9 +320,9 @@ def get_academic_models():
                 "name": "Rothermel Level-Set PDE Solver",
                 "paradigm": "Physics-Based Continuous PDE",
                 "governing_equations": "∂ϕ/∂t + R(x, ∇ϕ) ‖∇ϕ‖ = 0 (Godunov Upwind Scheme)",
-                "strengths": "Strict energy conservation, smooth perimeter tracking, exact normal vectors",
+                "strengths": "Smooth perimeter tracking (simplified surrogate rate of spread, not full Rothermel)",
                 "limitations": "Computational scaling on ultra-fine grids; requires coupled ember spotting operator",
-                "typical_latency_ms": 45.0,
+                "typical_latency_ms": None,
                 "open_source": True,
                 "reference": "Rothermel (1972) / Osher & Sethian (1988) Level-Set Methods",
             },
@@ -365,7 +333,7 @@ def get_academic_models():
                 "governing_equations": "p_burn = p0 * (1 + p_veg) * pw(V, θ) * ps(Δz)",
                 "strengths": "Ultra-fast execution, native stochastic firebrand ember jump modeling",
                 "limitations": "Grid-orientation anisotropy; lacks continuous thermodynamic coupling",
-                "typical_latency_ms": 95.0,
+                "typical_latency_ms": None,
                 "open_source": True,
                 "reference": "Alexandridis et al. (2008) Applied Mathematical Modelling",
             },
@@ -373,23 +341,23 @@ def get_academic_models():
                 "id": "google_ndws",
                 "name": "Google Research NDWS Surrogate",
                 "paradigm": "Deep Learning Spatial-Temporal ConvNet",
-                "governing_equations": "12-channel multimodal satellite/weather to 24-hr fire mask mapping",
-                "strengths": "Millisecond inference, scales to regional multi-tile predictions",
-                "limitations": "Black-box non-physical spread leakage; OOD failure on extreme wind gusts",
-                "typical_latency_ms": 15.0,
+                "governing_equations": "1 km input features (weather, terrain, vegetation, drought, population, previous fire mask) to next-day fire mask",
+                "strengths": "Public dataset and baselines for next-day spread",
+                "limitations": "1 km resolution; not run in this app",
+                "typical_latency_ms": None,
                 "open_source": True,
-                "reference": "Huot et al. (Google Research, NeurIPS 2021 Datasets & Benchmarks)",
+                "reference": "Huot et al., Next Day Wildfire Spread, IEEE TGRS 2022 (arXiv 2112.02447)",
             },
             {
                 "id": "wsts_transformer",
-                "name": "WildfireSpreadTS Spatio-Temporal Transformer",
-                "paradigm": "Attention-Based Time Series Forecaster",
-                "governing_equations": "Multi-head spatial self-attention on multi-day VIIRS thermal footprints",
-                "strengths": "Captures multi-day sequence dynamics and seasonal regime shifts",
-                "limitations": "High GPU VRAM footprint; requires dense sequential satellite imagery",
-                "typical_latency_ms": 35.0,
+                "name": "WildfireSpreadTS",
+                "paradigm": "Multi-temporal spread-prediction dataset (U-Net, ConvLSTM, UTAE baselines)",
+                "governing_equations": "23-channel daily inputs to next-day active-fire mask",
+                "strengths": "Multi-day sequences across 607 US fire events",
+                "limitations": "Daily resolution; not run in this app",
+                "typical_latency_ms": None,
                 "open_source": True,
-                "reference": "Gerhard et al. (NeurIPS 2023 / 2024)",
+                "reference": "Gerard, Zhao & Sullivan, NeurIPS 2023 Datasets & Benchmarks",
             },
         ],
     }
@@ -475,9 +443,10 @@ class EvaluateRewardRequest(BaseModel):
 
 @app.post("/api/query-corridor")
 def query_corridor(req: QueryCorridorRequest):
-    """Query wind-adjusted 130ft radiant heat corridor, cropland classification, and parcel ROI metrics."""
+    """Real data about a clicked point: HRRR weather and alerts, Bellwether, FHSZ, land cover, past fires,
+    buildings within the radius, slope and the nearest RAWS fuel moisture."""
     try:
-        result = gis_service.query_corridor(lat=req.lat, lng=req.lng, radius_feet=req.radius_feet)
+        result = gis_service.query_point(lat=req.lat, lng=req.lng, radius_feet=req.radius_feet)
         return {"success": True, "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

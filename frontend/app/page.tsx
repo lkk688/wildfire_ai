@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Map, Eye, Sparkles } from 'lucide-react';
 import Sidebar from './components/Sidebar';
@@ -10,13 +10,15 @@ import DataCatalogModal from './components/DataCatalogModal';
 import ModelEvaluationModal from './components/ModelEvaluationModal';
 import AICopilotDrawer from './components/AICopilotDrawer';
 import VisionBenchmarkView from './components/VisionBenchmarkView';
+import type { LayerToggles } from './components/MapView';
+import type { LayerState } from './lib/api';
 
 const MapView = dynamic(() => import('./components/MapView'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-slate-400 gap-3">
       <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      <span className="text-sm font-medium">Loading Wildfire Risk Intelligence GIS Map & Multi-Source Overlays...</span>
+      <span className="text-sm font-medium">Loading map...</span>
     </div>
   ),
 });
@@ -25,31 +27,52 @@ const MapView = dynamic(() => import('./components/MapView'), {
 export default function Home() {
   const [appMode, setAppMode] = useState<'map' | 'vision'>('map');
 
-  // Automatically activate vision mode if URL specifies ?mode=vision or ?case=...
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('mode') === 'vision' || params.get('case')) {
-        setAppMode('vision');
-      }
-    }
-  }, []);
+
   const [activeLayer, setActiveLayer] = useState<'1yr' | '5yr' | 'none'>('1yr');
   const [selectedRegion, setSelectedRegion] = useState<string>('san_bruno');
-  const [showSentinel, setShowSentinel] = useState<boolean>(true);
-  const [showCalFire, setShowCalFire] = useState<boolean>(false);
-  const [showWeather, setShowWeather] = useState<boolean>(true);
-  const [showBuildings, setShowBuildings] = useState<boolean>(true);
-  const [showCalfirePerimeters, setShowCalfirePerimeters] = useState<boolean>(true);
-  const [showFirmsHotspots, setShowFirmsHotspots] = useState<boolean>(true);
-  const [showFuelMoisture, setShowFuelMoisture] = useState<boolean>(true);
-  const [showTerrainSlope, setShowTerrainSlope] = useState<boolean>(false);
+  const [layers, setLayers] = useState<LayerToggles>({
+    perimeters: true,
+    hotspots: true,
+    fuel: true,
+    slope: false,
+    buildings: true,
+    ndvi: false,
+    fhsz: false,
+    wind: true,
+  });
+  const [layerStatus, setLayerStatus] = useState<Record<string, LayerState>>({});
   const [opacity, setOpacity] = useState<number>(0.75);
   const [selectedCorridorData, setSelectedCorridorData] = useState<any>(null);
   const [layerStats, setLayerStats] = useState<any>(null);
   const [isDataCatalogOpen, setIsDataCatalogOpen] = useState<boolean>(false);
   const [isModelEvalOpen, setIsModelEvalOpen] = useState<boolean>(false);
+  const [initialView, setInitialView] = useState<{ lat: number; lng: number; zoom: number } | null>(null);
+  const [ready, setReady] = useState(false);
 
+  // Shareable views: ?mode=vision | ?region=santa_cruz&layers=fhsz,slope&bw=5yr&lat=37.1&lng=-122.1&z=15
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mode') === 'vision' || params.get('case')) setAppMode('vision');
+    const r = params.get('region');
+    if (r) setSelectedRegion(r);
+    const bw = params.get('bw');
+    if (bw === '1yr' || bw === '5yr' || bw === 'none') setActiveLayer(bw);
+    const ls = params.get('layers');
+    if (ls !== null) {
+      const on = new Set(ls.split(',').filter(Boolean));
+      setLayers((prev) => Object.fromEntries(Object.keys(prev).map((k) => [k, on.has(k)])) as LayerToggles);
+    }
+    const lat = parseFloat(params.get('lat') || ''), lng = parseFloat(params.get('lng') || ''), z = parseInt(params.get('z') || '', 10);
+    if (params.get('panel') === 'eval') setIsModelEvalOpen(true);
+    if (params.get('panel') === 'sources') setIsDataCatalogOpen(true);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) setInitialView({ lat, lng, zoom: Number.isFinite(z) ? z : 14 });
+    setReady(true);
+  }, []);
+
+  const updateStatus = useCallback(
+    (id: string, s: LayerState) => setLayerStatus((prev) => ({ ...prev, [id]: s })),
+    [],
+  );
 
   return (
     <main className="flex w-screen h-screen overflow-hidden bg-slate-950 relative">
@@ -65,7 +88,7 @@ export default function Home() {
           }`}
         >
           <Map className="w-3.5 h-3.5" />
-          <span>3D Risk GIS Map</span>
+          <span>Risk Map (live data)</span>
         </button>
 
         <button
@@ -78,10 +101,7 @@ export default function Home() {
           }`}
         >
           <Eye className="w-3.5 h-3.5 text-purple-300" />
-          <span>VLM Fire Vision & Reasoning</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-orange-500 text-white border border-orange-400/40 animate-pulse">
-            NEW
-          </span>
+          <span>VLM Benchmark (dev set)</span>
         </button>
       </div>
 
@@ -94,22 +114,9 @@ export default function Home() {
             setActiveLayer={setActiveLayer}
             selectedRegion={selectedRegion}
             setSelectedRegion={setSelectedRegion}
-            showSentinel={showSentinel}
-            setShowSentinel={setShowSentinel}
-            showCalFire={showCalFire}
-            setShowCalFire={setShowCalFire}
-            showWeather={showWeather}
-            setShowWeather={setShowWeather}
-            showBuildings={showBuildings}
-            setShowBuildings={setShowBuildings}
-            showCalfirePerimeters={showCalfirePerimeters}
-            setShowCalfirePerimeters={setShowCalfirePerimeters}
-            showFirmsHotspots={showFirmsHotspots}
-            setShowFirmsHotspots={setShowFirmsHotspots}
-            showFuelMoisture={showFuelMoisture}
-            setShowFuelMoisture={setShowFuelMoisture}
-            showTerrainSlope={showTerrainSlope}
-            setShowTerrainSlope={setShowTerrainSlope}
+            layers={layers}
+            setLayers={setLayers}
+            layerStatus={layerStatus}
             opacity={opacity}
             setOpacity={setOpacity}
             layerStats={layerStats}
@@ -120,36 +127,32 @@ export default function Home() {
 
           {/* Main Interactive Map View */}
           <div className="flex-1 h-full relative">
-            <MapView
+            {ready && <MapView
+              initialView={initialView}
               activeLayer={activeLayer}
               selectedRegion={selectedRegion}
-              showSentinel={showSentinel}
-              showCalFire={showCalFire}
-              showWeather={showWeather}
-              showBuildings={showBuildings}
-              showCalfirePerimeters={showCalfirePerimeters}
-              showFirmsHotspots={showFirmsHotspots}
-              showFuelMoisture={showFuelMoisture}
-              showTerrainSlope={showTerrainSlope}
+              layers={layers}
               opacity={opacity}
               onSelectLocation={(data) => setSelectedCorridorData(data)}
               onLayerStatsUpdate={(stats) => setLayerStats(stats)}
-            />
+              onLayerStatus={updateStatus}
+            />}
 
-            {/* Real-Time Wind-Adjusted Corridor ROI Panel */}
+            {/* Point query panel (real data at the clicked location) */}
             <CorridorMetricsCard
               data={selectedCorridorData}
               onClose={() => setSelectedCorridorData(null)}
             />
 
             {/* Aggregated Top Risk Factors Bar Chart */}
-            <RiskDriversChart />
+            <RiskDriversChart region={selectedRegion} />
           </div>
 
           {/* Multi-Source Data Documentation Modal */}
           <DataCatalogModal
             isOpen={isDataCatalogOpen}
             onClose={() => setIsDataCatalogOpen(false)}
+            region={selectedRegion}
           />
 
           {/* Off-the-Shelf Model Evaluation & Gap Analysis Modal */}

@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../lib/api';
+
 import React, { useState, useEffect } from 'react';
 import {
   Eye,
@@ -818,9 +820,9 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
       setLoading(true);
       try {
         const [casesRes, resultsRes, metricsRes] = await Promise.all([
-          fetch('http://localhost:8000/api/vlm/benchmark/cases').catch(() => null),
-          fetch('http://localhost:8000/api/vlm/benchmark/results').catch(() => null),
-          fetch('http://localhost:8000/api/vlm/benchmark/metrics').catch(() => null),
+          fetch(`${API_BASE}/api/vlm/benchmark/cases`).catch(() => null),
+          fetch(`${API_BASE}/api/vlm/benchmark/results`).catch(() => null),
+          fetch(`${API_BASE}/api/vlm/benchmark/metrics`).catch(() => null),
         ]);
 
         if (casesRes && casesRes.ok) {
@@ -896,7 +898,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
     setLiveResult(null);
     setLiveRewardAudit(null);
     try {
-      const res = await fetch('http://localhost:8000/api/vlm/predict', {
+      const res = await fetch(`${API_BASE}/api/vlm/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -911,7 +913,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
         const textToAudit = data.thinking_trace || data.analysis_text || (data.predicted_survival ? `PREDICTION: ${data.predicted_survival}\nPRIMARY_VULNERABILITY: ${data.predicted_vulnerability}\nFAILURE_MECHANISM: ${data.predicted_mechanism}` : '');
         if (textToAudit) {
           try {
-            const auditRes = await fetch('http://localhost:8000/api/vlm/evaluate-reasoning-reward', {
+            const auditRes = await fetch(`${API_BASE}/api/vlm/evaluate-reasoning-reward`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -939,7 +941,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
     if (!currentCase || !candidateText) return;
     setAuditingReward(true);
     try {
-      const auditRes = await fetch('http://localhost:8000/api/vlm/evaluate-reasoning-reward', {
+      const auditRes = await fetch(`${API_BASE}/api/vlm/evaluate-reasoning-reward`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1444,7 +1446,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         <div className="relative aspect-square overflow-hidden group">
                           <div className="w-full h-full overflow-hidden flex items-center justify-center">
                             <img
-                              src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=prefire&v=2`}
+                              src={`${API_BASE}/api/vlm/benchmark/image/${currentCase.id}?epoch=prefire&v=2`}
                               alt={`Pre-fire 2020 Case ${currentCase.id}`}
                               className={`w-full h-full object-cover transition-transform duration-500 origin-center ${
                                 zoomLevel === '2x' ? 'scale-[2.0]' : 'group-hover:scale-105'
@@ -1482,7 +1484,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         <div className="relative aspect-square overflow-hidden group">
                           <div className="w-full h-full overflow-hidden flex items-center justify-center">
                             <img
-                              src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=postfire&v=2`}
+                              src={`${API_BASE}/api/vlm/benchmark/image/${currentCase.id}?epoch=postfire&v=2`}
                               alt={`Post-fire 2021 Case ${currentCase.id}`}
                               className={`w-full h-full object-cover transition-transform duration-500 origin-center ${
                                 zoomLevel === '2x' ? 'scale-[2.0]' : 'group-hover:scale-105'
@@ -1531,7 +1533,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       <div className="relative aspect-video w-full bg-slate-950 overflow-hidden group">
                         <div className="w-full h-full overflow-hidden flex items-center justify-center">
                           <img
-                            src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=${selectedEpoch}&v=2`}
+                            src={`${API_BASE}/api/vlm/benchmark/image/${currentCase.id}?epoch=${selectedEpoch}&v=2`}
                             alt={`Aerial view ${selectedEpoch} for Case ${currentCase.id}`}
                             className={`w-full h-full object-cover transition-transform duration-500 origin-center ${
                               zoomLevel === '2x' ? 'scale-[2.0]' : 'group-hover:scale-105'
@@ -1611,7 +1613,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       {currentCase.streetview?.has_image ? (
                         <>
                           <img
-                            src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=streetview&v=3`}
+                            src={`${API_BASE}/api/vlm/benchmark/image/${currentCase.id}?epoch=streetview&v=3`}
                             alt={`Google Street View Facade for Case ${currentCase.id}`}
                             className="w-full h-full object-cover transition-transform duration-700 origin-center group-hover:scale-105"
                           />
@@ -1653,7 +1655,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                           {/* Aerial Zoom Thumbnail */}
                           <div className="relative w-44 h-44 shrink-0 rounded-xl overflow-hidden border border-amber-500/40 shadow-xl group">
                             <img
-                              src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=prefire&v=2`}
+                              src={`${API_BASE}/api/vlm/benchmark/image/${currentCase.id}?epoch=prefire&v=2`}
                               alt={`Aerial Zoom Case ${currentCase.id}`}
                               className="w-full h-full object-cover scale-150"
                             />
@@ -1776,7 +1778,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                       {/* Left Tile: Always 2020 Pre-fire Macro Aerial Ortho */}
                       <div className="relative aspect-square overflow-hidden group">
                         <img
-                          src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=prefire&v=2`}
+                          src={`${API_BASE}/api/vlm/benchmark/image/${currentCase.id}?epoch=prefire&v=2`}
                           alt={`Pre-fire aerial view Case ${currentCase.id}`}
                           className="w-full h-full object-cover"
                         />
@@ -1798,7 +1800,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         {currentCase.streetview?.has_image ? (
                           <>
                             <img
-                              src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=streetview&v=3`}
+                              src={`${API_BASE}/api/vlm/benchmark/image/${currentCase.id}?epoch=streetview&v=3`}
                               alt={`Real Micro Street View Case ${currentCase.id}`}
                               className="w-full h-full object-cover"
                             />
@@ -1813,7 +1815,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
                         ) : (
                           <>
                             <img
-                              src={`http://localhost:8000/api/vlm/benchmark/image/${currentCase.id}?epoch=postfire&v=2`}
+                              src={`${API_BASE}/api/vlm/benchmark/image/${currentCase.id}?epoch=postfire&v=2`}
                               alt={`Post-fire Damage Aerial GT Case ${currentCase.id}`}
                               className="w-full h-full object-cover"
                             />

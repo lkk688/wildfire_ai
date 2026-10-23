@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../lib/api';
+
 import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
@@ -43,7 +45,7 @@ export default function AICopilotDrawer({ selectedRegion }: AICopilotDrawerProps
 
   // Fetch provider configuration dynamically
   useEffect(() => {
-    fetch('http://localhost:8000/api/ai/provider-status')
+    fetch(`${API_BASE}/api/ai/provider-status`)
       .then((res) => res.json())
       .then((data) => {
         const modelName = data.status?.model || data.model || 'OpenAI Compatible';
@@ -56,7 +58,7 @@ export default function AICopilotDrawer({ selectedRegion }: AICopilotDrawerProps
 
   // Default greeting when drawer opens or persona changes
   useEffect(() => {
-    fetch(`http://localhost:8000/api/ai/suggested-prompts?persona=${persona}`)
+    fetch(`${API_BASE}/api/ai/suggested-prompts?persona=${persona}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.prompts) {
@@ -67,14 +69,14 @@ export default function AICopilotDrawer({ selectedRegion }: AICopilotDrawerProps
         setPrompts(
           persona === 'firefighter'
             ? [
-                'What is the 130ft radiant heat contagion risk for Crestmoor Canyon?',
-                'Fetch live NOAA wind vectors and CDEC fuel moisture.',
-                'Compare Bellwether 100m dynamic risk against CAL FIRE Moderate FHSZ.',
+                'What are the current wind, humidity and fuel moisture here?',
+                'Are there active fires or satellite hotspots in California right now?',
+                'Where do Bellwether and the CAL FIRE FHSZ map disagree in this region?',
               ]
             : [
                 'How can I qualify for mandatory California insurance discounts?',
                 'What is the difference between Zone 0 (0-5ft) and Zone 1 defensible space?',
-                'Why did my insurance company non-renew my policy in the WUI?',
+                'What fire hazard zone is my area in, and has it burned before?',
               ]
         );
       });
@@ -84,22 +86,22 @@ export default function AICopilotDrawer({ selectedRegion }: AICopilotDrawerProps
       role: 'assistant',
       content:
         persona === 'firefighter'
-          ? `### 🚒 Incident Commander & Tactical Fire Operations Active
-I am your **Wildfire AI Copilot** connected directly to the GIS platform. I have live access to:
-* **NOAA HRRR** live hourly wind vectors & gusts
-* **CDEC / RAWS** dead fuel moisture (DFM) & live fuel moisture (LFMC)
-* **130ft Radiant Heat Contagion** calculation (Saylors S-Ratio saved property valuation)
-* **Bellwether 100m** AI hazard probability vs. **CAL FIRE FHSZ**
+          ? `### 🚒 Fire operations mode
+My tools query the same live sources as the map:
+* **NOAA HRRR** weather and wind (via Open-Meteo) and **NWS** alerts such as Red Flag Warnings
+* **CDEC RAWS** 10-h fuel moisture, hourly
+* **Active fires**: CAL FIRE incidents, NIFC perimeters, NASA FIRMS satellite detections
+* **Location context**: FHSZ zone, land cover, past fires, building footprints, slope, and Bellwether (pilot area)
 
-What incident coordinates or tactical conditions would you like to evaluate?`
-          : `### 🏡 Resident & Community Wildfire Safety Active
-Hello! I am your **Wildfire AI Assistant**. I can help you:
-* **Check your property risk** against predictive AI hazard models
-* **Lower your insurance premiums** using California's *Safer from Wildfires* (10 CCR § 2644.9) discounts
-* **Audit your home hardening**: Class A roofing, 1/16" ember-resistant vents, and Zone 0 (0–5ft) defensible space
-* **Appeal unfair policy non-renewals** with verified mitigation evidence
+Ask about current conditions, active fires or a specific location.`
+          : `### 🏡 Resident mode
+I can look up, from public data:
+* The **fire hazard zone** and **past fires** at a location
+* **Current weather, alerts and fuel moisture** near you
+* How **Bellwether's forecast** compares with the CAL FIRE hazard map (pilot area)
+* General **home-hardening and defensible-space** guidance (CDI, CAL FIRE)
 
-Ask me any question below or click a suggested topic to begin!`,
+I do not have insurance scores or property records.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -132,7 +134,7 @@ Ask me any question below or click a suggested topic to begin!`,
 
       history.push({ role: 'user', content: userText.trim() });
 
-      const response = await fetch('http://localhost:8000/api/ai/chat', {
+      const response = await fetch(`${API_BASE}/api/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -169,7 +171,7 @@ Ask me any question below or click a suggested topic to begin!`,
         {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: `⚠️ **Connection Error**: Could not connect to the backend AI agent service at \`http://localhost:8000/api/ai/chat\`.`,
+          content: `⚠️ **Connection Error**: Could not connect to the backend AI agent service at \`${API_BASE}/api/ai/chat\`.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -192,7 +194,7 @@ Ask me any question below or click a suggested topic to begin!`,
           </div>
           <div className="text-left">
             <div className="text-xs uppercase tracking-wider text-slate-950 font-black">AI Wildfire Copilot</div>
-            <div className="text-[10px] text-slate-900 font-medium">OpenAI-Compatible & Live GIS</div>
+            <div className="text-[10px] text-slate-900 font-medium">Tools use live public data</div>
           </div>
         </button>
       )}
@@ -215,7 +217,7 @@ Ask me any question below or click a suggested topic to begin!`,
                       {providerModel}
                     </span>
                   </h3>
-                  <p className="text-[10px] text-slate-400">Autonomous GIS Tool-Calling & Reasoning</p>
+                  <p className="text-[10px] text-slate-400">Answers cite the live sources its tools query</p>
                 </div>
               </div>
 
@@ -326,7 +328,7 @@ Ask me any question below or click a suggested topic to begin!`,
             {isLoading && (
               <div className="flex items-center gap-2 text-orange-400 text-xs p-3 rounded-2xl bg-slate-950/60 border border-slate-800 animate-pulse">
                 <Flame className="w-4 h-4 animate-spin" />
-                <span>{providerModel} is querying GIS datasets and analyzing telemetry...</span>
+                <span>{providerModel} is querying live sources...</span>
               </div>
             )}
             <div ref={messagesEndRef} />

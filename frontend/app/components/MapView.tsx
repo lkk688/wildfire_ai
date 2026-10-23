@@ -1,399 +1,424 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import { API_BASE, REGIONS, LayerState, getJSON } from '../lib/api';
+
+export type LayerToggles = {
+  perimeters: boolean;
+  hotspots: boolean;
+  fuel: boolean;
+  slope: boolean;
+  buildings: boolean;
+  ndvi: boolean;
+  fhsz: boolean;
+  wind: boolean;
+};
 
 interface MapViewProps {
+  initialView?: { lat: number; lng: number; zoom: number } | null;
   activeLayer: '1yr' | '5yr' | 'none';
   selectedRegion: string;
-  showSentinel: boolean;
-  showCalFire: boolean;
-  showWeather: boolean;
-  showBuildings: boolean;
-  showCalfirePerimeters: boolean;
-  showFirmsHotspots: boolean;
-  showFuelMoisture: boolean;
-  showTerrainSlope: boolean;
+  layers: LayerToggles;
   opacity: number;
   onSelectLocation: (data: any) => void;
   onLayerStatsUpdate: (stats: any) => void;
+  onLayerStatus: (id: string, s: LayerState) => void;
 }
 
-const REGION_CENTERS: Record<string, [number, number]> = {
-  san_bruno: [37.618, -122.425],
-  san_jose: [37.338, -121.886],
-  santa_cruz: [37.125, -122.050],
-};
+const BUILDING_MIN_ZOOM = 15;
+
+// Text from external feeds goes into tooltips: escape it.
+const esc = (v: any) =>
+  String(v ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+const fmt = (v: any, d = 0) => (v === null || v === undefined || Number.isNaN(v) ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: d }));
+const bboxParam = (b: [number, number, number, number]) => b.map((v) => v.toFixed(5)).join(',');
 
 export default function MapView({
+  initialView,
   activeLayer,
   selectedRegion,
-  showSentinel,
-  showCalFire,
-  showWeather,
-  showBuildings,
-  showCalfirePerimeters,
-  showFirmsHotspots,
-  showFuelMoisture,
-  showTerrainSlope,
+  layers,
   opacity,
   onSelectLocation,
   onLayerStatsUpdate,
+  onLayerStatus,
 }: MapViewProps) {
   const [map, setMap] = useState<L.Map | null>(null);
-  const [bellwetherOverlay, setBellwetherOverlay] = useState<L.ImageOverlay | null>(null);
-  const [calfireOverlay, setCalfireOverlay] = useState<L.ImageOverlay | null>(null);
-  const [terrainSlopeOverlay, setTerrainSlopeOverlay] = useState<L.ImageOverlay | null>(null);
-  const [buildingsLayer, setBuildingsLayer] = useState<L.GeoJSON | null>(null);
-  const [perimetersLayer, setPerimetersLayer] = useState<L.GeoJSON | null>(null);
-  const [firmsLayer, setFirmsLayer] = useState<L.GeoJSON | null>(null);
-  const [fuelMoistureLayer, setFuelMoistureLayer] = useState<L.GeoJSON | null>(null);
-  const [corridorCircle, setCorridorCircle] = useState<L.Circle | null>(null);
-  const [fireMarker, setFireMarker] = useState<L.Marker | null>(null);
+  const refs = useRef<Record<string, L.Layer | null>>({});
+  const clickRefs = useRef<{ marker: L.Marker | null; circle: L.Circle | null }>({ marker: null, circle: null });
+  const statusRef = useRef(onLayerStatus);
+  statusRef.current = onLayerStatus;
+  const region = REGIONS[selectedRegion] || REGIONS.san_bruno;
 
-  // Initialize Leaflet Map
+  const setLayer = (id: string, layer: L.Layer | null) => {
+    if (!map) return;
+    const old = refs.current[id];
+    if (old) map.removeLayer(old);
+    refs.current[id] = layer;
+    if (layer) layer.addTo(map);
+  };
+  const status = (id: string, s: LayerState) => statusRef.current(id, s);
+
+  // Map init
   useEffect(() => {
-    const mapInstance = L.map('leaflet-map', {
-      center: REGION_CENTERS[selectedRegion] || [37.618, -122.425],
-      zoom: 13,
+    const m = L.map('leaflet-map', {
+      center: initialView ? [initialView.lat, initialView.lng] : region.center,
+      zoom: initialView ? initialView.zoom : 13,
       zoomControl: false,
     });
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      attribution: '&copy; CARTO &copy; Bellwether / CAL FIRE / NASA FIRMS / CDEC / USGS',
-    }).addTo(mapInstance);
-
-    L.control.zoom({ position: 'bottomleft' }).addTo(mapInstance);
-
-    setMap(mapInstance);
-
+    // Keyless Esri basemaps (the CARTO tiles used before now require an API key)
+    const esri = (svc: string) => `https://server.arcgisonline.com/ArcGIS/rest/services/${svc}/MapServer/tile/{z}/{y}/{x}`;
+    const data =
+      'Bellwether (X), NIFC, CAL FIRE, NASA FIRMS, CDEC, NOAA HRRR/Open-Meteo, NWS, USGS 3DEP, Copernicus Sentinel-2/Esri, ESA WorldCover, Microsoft Building Footprints';
+    const dark = L.layerGroup([
+      L.tileLayer(esri('Canvas/World_Dark_Gray_Base'), { maxZoom: 19, maxNativeZoom: 16, attribution: `Esri, HERE, Garmin, OSM | ${data}` }),
+      L.tileLayer(esri('Canvas/World_Dark_Gray_Reference'), { maxZoom: 19, maxNativeZoom: 16 }),
+    ]);
+    const imagery = L.tileLayer(esri('World_Imagery'), { maxZoom: 19, attribution: `Esri, Maxar, Earthstar Geographics | ${data}` });
+    const topo = L.tileLayer(esri('World_Topo_Map'), { maxZoom: 19, attribution: `Esri, USGS, NOAA | ${data}` });
+    dark.addTo(m);
+    L.control.layers({ 'Dark gray': dark, 'Satellite imagery': imagery, Topographic: topo }, {}, { position: 'topleft' }).addTo(m);
+    L.control.zoom({ position: 'bottomleft' }).addTo(m);
+    L.control.scale({ position: 'bottomleft', imperial: true }).addTo(m);
+    setMap(m);
     return () => {
-      mapInstance.remove();
+      m.remove();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle Region Change (FlyTo)
+  const firstRegion = useRef(true);
   useEffect(() => {
     if (!map) return;
-    const targetCenter = REGION_CENTERS[selectedRegion] || [37.618, -122.425];
-    map.flyTo(targetCenter, 13, { duration: 1.5 });
+    if (firstRegion.current && initialView) {
+      firstRegion.current = false; // keep the URL's view on first load
+      return;
+    }
+    firstRegion.current = false;
+    map.flyTo(region.center, 13, { duration: 1.2 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, selectedRegion]);
 
-  // Update Bellwether Probability Layer (Dynamic Region BBox Crop)
+  // ---------------------------------------------------------------- Bellwether (partner GeoTIFF)
   useEffect(() => {
     if (!map) return;
-
-    if (bellwetherOverlay) {
-      map.removeLayer(bellwetherOverlay);
-      setBellwetherOverlay(null);
+    setLayer('bellwether', null);
+    if (activeLayer === 'none') {
+      status('bellwether', { state: 'off' });
+      return;
     }
-
-    if (activeLayer === 'none') return;
-
-    const is5Yr = activeLayer === '5yr';
-    fetch(`http://localhost:8000/api/layers/bellwether?is_5_year=${is5Yr}&region=${selectedRegion}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.layer) {
-          const { image_url, bounds, stats } = data.layer;
-          const overlayUrl = `http://localhost:8000${image_url}`;
-          
-          const newOverlay = L.imageOverlay(overlayUrl, bounds, {
-            opacity: opacity,
-            interactive: false,
-          }).addTo(map);
-
-          setBellwetherOverlay(newOverlay);
-          onLayerStatsUpdate(stats);
+    status('bellwether', { state: 'loading' });
+    getJSON(`/api/layers/bellwether?is_5_year=${activeLayer === '5yr'}&region=${selectedRegion}`)
+      .then((d) => {
+        const lyr = d.layer;
+        if (!lyr?.covered) {
+          onLayerStatsUpdate(null);
+          status('bellwether', { state: 'info', detail: lyr?.reason || 'No coverage here' });
+          return;
         }
+        setLayer('bellwether', L.imageOverlay(`${API_BASE}${lyr.image_url}`, lyr.bounds, { opacity, interactive: false }));
+        onLayerStatsUpdate(lyr.stats);
+        status('bellwether', {
+          state: 'ok',
+          detail: `${lyr.window}; values for ${fmt(lyr.valid_share_pct, 1)}% of this region`,
+        });
       })
-      .catch((err) => console.error('Failed to load Bellwether overlay:', err));
+      .catch((e) => status('bellwether', { state: 'error', detail: String(e.message || e) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, activeLayer, selectedRegion]);
 
-  // Update CAL FIRE Fire Perimeters Layer
+  useEffect(() => {
+    const o = refs.current.bellwether as L.ImageOverlay | null;
+    if (o) o.setOpacity(opacity);
+  }, [opacity]);
+
+  // ---------------------------------------------------------------- Fire perimeters and incidents
   useEffect(() => {
     if (!map) return;
-    if (perimetersLayer) {
-      map.removeLayer(perimetersLayer);
-      setPerimetersLayer(null);
-    }
-    if (!showCalfirePerimeters) return;
+    setLayer('perimeters', null);
+    if (!layers.perimeters) return status('perimeters', { state: 'off' });
+    status('perimeters', { state: 'loading' });
+    getJSON(`/api/layers/perimeters?bbox=${bboxParam(region.bbox)}`)
+      .then((d) => {
+        const group = L.layerGroup();
+        L.geoJSON(d.historic, {
+          style: () => ({ color: '#f59e0b', weight: 1.2, dashArray: '4 4', fillColor: '#f59e0b', fillOpacity: 0.08 }),
+          onEachFeature: (f, l) => {
+            const p = f.properties;
+            l.bindTooltip(
+              `<div class="text-xs"><b>${esc(p.name)} (${esc(p.year)})</b><br/>${fmt(p.acres)} acres<br/><span class="opacity-70">${esc(p.source)}</span></div>`,
+              { sticky: true },
+            );
+          },
+        }).addTo(group);
+        L.geoJSON(d.current, {
+          style: () => ({ color: '#ef4444', weight: 2.5, fillColor: '#ef4444', fillOpacity: 0.3 }),
+          onEachFeature: (f, l) => {
+            const p = f.properties;
+            l.bindTooltip(
+              `<div class="text-xs"><b>${esc(p.name)}</b><br/>${fmt(p.acres)} acres · contained ${p.percent_contained ?? '—'}%<br/>Discovered ${esc(p.discovered)}<br/>Perimeter updated ${esc(p.perimeter_updated)}<br/><span class="opacity-70">${esc(p.source)}</span></div>`,
+              { sticky: true },
+            );
+          },
+        }).addTo(group);
+        L.geoJSON(d.incidents, {
+          pointToLayer: (_f, ll) =>
+            L.circleMarker(ll, { radius: 7, color: '#fff', weight: 1.5, fillColor: '#dc2626', fillOpacity: 0.95 }),
+          onEachFeature: (f, l) => {
+            const p = f.properties;
+            l.bindTooltip(
+              `<div class="text-xs"><b>${esc(p.name)}</b> (${esc(p.county)})<br/>${fmt(p.acres)} acres · ${p.percent_contained ?? '—'}% contained<br/>Updated ${esc(p.updated)}<br/><span class="opacity-70">${esc(p.source)}</span></div>`,
+            );
+          },
+        }).addTo(group);
+        setLayer('perimeters', group);
+        const err = Object.keys(d.errors || {}).length ? ` (failed: ${Object.keys(d.errors).join(', ')})` : '';
+        status('perimeters', {
+          state: err ? 'error' : 'ok',
+          detail: `${d.current.features.length} current perimeters and ${d.incidents.features.length} CAL FIRE incidents statewide; ${d.historic.features.length} past fires (1950+) in this region${err}`,
+        });
+      })
+      .catch((e) => status('perimeters', { state: 'error', detail: String(e.message || e) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.perimeters, selectedRegion]);
 
-    fetch('http://localhost:8000/api/layers/calfire-perimeters')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.perimeters) {
-          const geoJsonLayer = L.geoJSON(data.perimeters, {
-            style: (feature) => ({
-              color: feature?.properties?.color || '#dc2626',
-              weight: 2.5,
-              fillColor: '#ef4444',
-              fillOpacity: 0.35,
-              dashArray: '6, 6',
-            }),
-            onEachFeature: (feature, layer) => {
-              const p = feature.properties;
-              layer.bindTooltip(`
-                <div class="p-1 text-xs space-y-1 font-sans">
-                  <div class="font-bold text-red-400">${p.fire_name}</div>
-                  <div><strong class="text-slate-300">Burned:</strong> ${p.acres_burned} Acres</div>
-                  <div><strong class="text-slate-300">Containment:</strong> ${p.containment_pct}%</div>
-                  <div><strong class="text-slate-300">Agency:</strong> ${p.agency}</div>
-                  <div class="text-[10px] text-amber-400 mt-1">${p.status}</div>
-                </div>
-              `, { sticky: true });
-            },
-          }).addTo(map);
-          setPerimetersLayer(geoJsonLayer);
-        }
-      });
-  }, [map, showCalfirePerimeters]);
-
-  // Update NASA FIRMS Satellite Thermal Hotspots Layer
+  // ---------------------------------------------------------------- NASA FIRMS hotspots (California, 24 h)
   useEffect(() => {
     if (!map) return;
-    if (firmsLayer) {
-      map.removeLayer(firmsLayer);
-      setFirmsLayer(null);
-    }
-    if (!showFirmsHotspots) return;
-
-    fetch('http://localhost:8000/api/layers/firms-hotspots')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.hotspots) {
-          const geoJsonLayer = L.geoJSON(data.hotspots, {
-            pointToLayer: (feature, latlng) => {
-              return L.circleMarker(latlng, {
-                radius: 8,
-                fillColor: '#f59e0b',
-                color: '#b45309',
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.8,
-              });
-            },
-            onEachFeature: (feature, layer) => {
-              const p = feature.properties;
-              layer.bindTooltip(`
-                <div class="p-1 text-xs space-y-1 font-sans">
-                  <div class="font-bold text-amber-400">🛰️ ${p.sensor} Thermal Hotspot</div>
-                  <div><strong class="text-slate-300">Brightness:</strong> ${p.brightness_kelvin} K</div>
-                  <div><strong class="text-slate-300">Radiative Power:</strong> ${p.frp_mw} MW</div>
-                  <div><strong class="text-slate-300">Confidence:</strong> ${p.confidence}</div>
-                  <div class="text-[10px] text-slate-400">${p.acquisition_time}</div>
-                </div>
-              `, { sticky: true });
-            },
-          }).addTo(map);
-          setFirmsLayer(geoJsonLayer);
-        }
-      });
-  }, [map, showFirmsHotspots]);
-
-  // Update CDEC Fuel Moisture Layer
-  useEffect(() => {
-    if (!map) return;
-    if (fuelMoistureLayer) {
-      map.removeLayer(fuelMoistureLayer);
-      setFuelMoistureLayer(null);
-    }
-    if (!showFuelMoisture) return;
-
-    fetch('http://localhost:8000/api/layers/fuel-moisture')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.stations) {
-          const geoJsonLayer = L.geoJSON(data.stations, {
-            pointToLayer: (feature, latlng) => {
-              return L.circleMarker(latlng, {
-                radius: 9,
-                fillColor: '#14b8a6',
-                color: '#0f766e',
-                weight: 2,
-                opacity: 1,
+    setLayer('hotspots', null);
+    if (!layers.hotspots) return status('hotspots', { state: 'off' });
+    status('hotspots', { state: 'loading' });
+    getJSON('/api/layers/firms-hotspots')
+      .then((d) => {
+        const fc = d.hotspots;
+        setLayer(
+          'hotspots',
+          L.geoJSON(fc, {
+            pointToLayer: (f, ll) =>
+              L.circleMarker(ll, {
+                radius: Math.min(4 + Math.sqrt(f.properties.frp_mw || 0), 12),
+                color: '#7c2d12',
+                weight: 1,
+                fillColor: (f.properties.frp_mw || 0) > 20 ? '#f97316' : '#fbbf24',
                 fillOpacity: 0.85,
-              });
+              }),
+            onEachFeature: (f, l) => {
+              const p = f.properties;
+              l.bindTooltip(
+                `<div class="text-xs"><b>${esc(p.sensor)} detection</b><br/>${esc(p.acquired_utc)} (${p.day_night === 'D' ? 'day' : 'night'})<br/>FRP ${fmt(p.frp_mw, 1)} MW · I4 ${fmt(p.brightness_ti4_k, 1)} K · confidence ${esc(p.confidence)}<br/><span class="opacity-70">${esc(p.source)}</span></div>`,
+              );
             },
-            onEachFeature: (feature, layer) => {
-              const p = feature.properties;
-              layer.bindTooltip(`
-                <div class="p-1 text-xs space-y-1 font-sans">
-                  <div class="font-bold text-teal-400">🧪 RAWS Station: ${p.station_name} (${p.station_id})</div>
-                  <div><strong class="text-slate-300">10-hr DFM:</strong> ${p.ten_hour_dfm_pct}%</div>
-                  <div><strong class="text-slate-300">100-hr DFM:</strong> ${p.hundred_hour_dfm_pct}%</div>
-                  <div><strong class="text-slate-300">Live LFMC:</strong> ${p.lfmc_pct}%</div>
-                  <div class="text-[10px] text-red-400 font-bold mt-1">${p.status}</div>
-                </div>
-              `, { sticky: true });
-            },
-          }).addTo(map);
-          setFuelMoistureLayer(geoJsonLayer);
-        }
-      });
-  }, [map, showFuelMoisture]);
+          }),
+        );
+        status('hotspots', {
+          state: 'ok',
+          detail: `${fc.features.length} VIIRS detections in California, last 24 h${fc.errors?.length ? ` (missing: ${fc.errors.length} sensor file)` : ''}`,
+        });
+      })
+      .catch((e) => status('hotspots', { state: 'error', detail: String(e.message || e) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.hotspots]);
 
-  // Update USGS Terrain Slope Overlay Layer
+  // ---------------------------------------------------------------- CDEC RAWS fuel moisture
   useEffect(() => {
     if (!map) return;
-    if (terrainSlopeOverlay) {
-      map.removeLayer(terrainSlopeOverlay);
-      setTerrainSlopeOverlay(null);
-    }
-    if (!showTerrainSlope) return;
+    setLayer('fuel', null);
+    if (!layers.fuel) return status('fuel', { state: 'off' });
+    status('fuel', { state: 'loading' });
+    getJSON(`/api/layers/fuel-moisture?bbox=${bboxParam(region.bbox)}`)
+      .then((d) => {
+        const fc = d.stations;
+        const color = (fm: number | null) =>
+          fm === null || fm === undefined ? '#64748b' : fm <= 6 ? '#dc2626' : fm <= 10 ? '#f97316' : fm <= 15 ? '#eab308' : '#14b8a6';
+        setLayer(
+          'fuel',
+          L.geoJSON(fc, {
+            pointToLayer: (f, ll) =>
+              L.circleMarker(ll, { radius: 9, color: '#0f172a', weight: 2, fillColor: color(f.properties.fuel_moisture_10h_pct), fillOpacity: 0.95 }),
+            onEachFeature: (f, l) => {
+              const p = f.properties;
+              l.bindTooltip(
+                `<div class="text-xs"><b>RAWS ${esc(p.station_name)} (${esc(p.station_id)})</b><br/>10-h fuel moisture: <b>${p.fuel_moisture_10h_pct ?? '—'}%</b> (${esc(p.dryness_class)})<br/>${p.air_temp_f ?? '—'}°F · RH ${p.rel_humidity_pct ?? '—'}% · wind ${p.wind_speed_mph ?? '—'} mph${p.wind_gust_mph != null ? ` (gust ${p.wind_gust_mph})` : ''}<br/>Observed ${esc(p.fuel_moisture_10h_pct_time_pst)} PST · ${esc(p.operator)}<br/><span class="opacity-70">${esc(p.source)}</span></div>`,
+              );
+            },
+          }),
+        );
+        const withData = fc.features.filter((f: any) => f.properties.fuel_moisture_10h_pct != null).length;
+        status('fuel', { state: 'ok', detail: `${withData}/${fc.features.length} stations reporting (hourly, PST)` });
+      })
+      .catch((e) => status('fuel', { state: 'error', detail: String(e.message || e) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.fuel, selectedRegion]);
 
-    fetch('http://localhost:8000/api/layers/terrain-slope')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.layer) {
-          const { image_url, bounds } = data.layer;
-          const newOverlay = L.imageOverlay(`http://localhost:8000${image_url}`, bounds, {
-            opacity: 0.55,
-            interactive: false,
-          }).addTo(map);
-          setTerrainSlopeOverlay(newOverlay);
-        }
-      });
-  }, [map, showTerrainSlope]);
+  // ---------------------------------------------------------------- Raster overlays: slope, NDVI
+  const rasterLayer = (id: string, on: boolean, path: string, op: number, detail: (l: any) => string) => {
+    if (!map) return;
+    setLayer(id, null);
+    if (!on) return status(id, { state: 'off' });
+    status(id, { state: 'loading' });
+    getJSON(path)
+      .then((d) => {
+        setLayer(id, L.imageOverlay(`${API_BASE}${d.layer.image_url}`, d.layer.bounds, { opacity: op, interactive: false }));
+        status(id, { state: 'ok', detail: detail(d.layer) });
+      })
+      .catch((e) => status(id, { state: 'error', detail: String(e.message || e) }));
+  };
+  useEffect(() => {
+    rasterLayer('slope', layers.slope, `/api/layers/terrain-slope?bbox=${bboxParam(region.bbox)}`, 0.75, (l) =>
+      `~${l.pixel_m} m pixels; ≥30% slope on ${fmt((l.area_share_pct['30_50'] || 0) + (l.area_share_pct.ge50 || 0), 1)}% of the region`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.slope, selectedRegion]);
+  useEffect(() => {
+    rasterLayer('ndvi', layers.ndvi, `/api/layers/ndvi?bbox=${bboxParam(region.bbox)}`, 0.7, (l) =>
+      `Scene ${l.acquired_utc?.slice(0, 10)} (${l.cloud_cover_pct}% cloud)`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.ndvi, selectedRegion]);
 
-  // Update Building Footprints GeoJSON Layer
+  // ---------------------------------------------------------------- CAL FIRE FHSZ
   useEffect(() => {
     if (!map) return;
+    setLayer('fhsz', null);
+    if (!layers.fhsz) return status('fhsz', { state: 'off' });
+    status('fhsz', { state: 'loading' });
+    getJSON(`/api/layers/fhsz?bbox=${bboxParam(region.bbox)}`)
+      .then((d) => {
+        setLayer(
+          'fhsz',
+          L.geoJSON(d.zones, {
+            style: (f) => ({ color: f?.properties?.color, weight: 1, fillColor: f?.properties?.color, fillOpacity: 0.28 }),
+            onEachFeature: (f, l) =>
+              l.bindTooltip(`<div class="text-xs"><b>FHSZ ${esc(f.properties.zone)}</b><br/>${esc(f.properties.source)}</div>`, { sticky: true }),
+          }),
+        );
+        status('fhsz', { state: 'ok', detail: `${d.zones.features.length} zone polygons (SRA 2023, LRA 2025)` });
+      })
+      .catch((e) => status('fhsz', { state: 'error', detail: String(e.message || e) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.fhsz, selectedRegion]);
 
-    if (buildingsLayer) {
-      map.removeLayer(buildingsLayer);
-      setBuildingsLayer(null);
-    }
+  // ---------------------------------------------------------------- HRRR wind grid
+  useEffect(() => {
+    if (!map) return;
+    setLayer('wind', null);
+    if (!layers.wind) return status('wind', { state: 'off' });
+    status('wind', { state: 'loading' });
+    getJSON(`/api/weather/wind-grid?bbox=${bboxParam(region.bbox)}&n=6`)
+      .then((d) => {
+        const g = L.layerGroup();
+        let t = '';
+        for (const f of d.wind.features) {
+          const p = f.properties;
+          t = p.valid_time_utc;
+          const to = (p.wind_from_deg + 180) % 360;
+          const icon = L.divIcon({
+            className: '',
+            iconSize: [44, 44],
+            iconAnchor: [22, 22],
+            html: `<div style="transform:rotate(${to}deg);width:44px;height:44px;display:flex;align-items:center;justify-content:center"><svg width="22" height="34" viewBox="0 0 22 34"><path d="M11 0 L20 12 L13 12 L13 34 L9 34 L9 12 L2 12 Z" fill="#60a5fa" stroke="#0f172a" stroke-width="1.5"/></svg></div>`,
+          });
+          L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], { icon, interactive: true })
+            .bindTooltip(
+              `<div class="text-xs"><b>HRRR 10 m wind</b><br/>from ${fmt(p.wind_from_deg)}° at ${fmt(p.wind_speed_mph, 1)} mph (gust ${fmt(p.wind_gust_mph, 1)})<br/>valid ${esc(p.valid_time_utc)}</div>`,
+            )
+            .addTo(g);
+        }
+        setLayer('wind', g);
+        status('wind', { state: 'ok', detail: `HRRR via Open-Meteo, valid ${t}` });
+      })
+      .catch((e) => status('wind', { state: 'error', detail: String(e.message || e) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.wind, selectedRegion]);
 
-    if (!showBuildings) return;
-
-    fetch('http://localhost:8000/api/layers/buildings')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.buildings) {
-          const geoJsonLayer = L.geoJSON(data.buildings, {
-            style: () => ({
-              color: '#10b981',
-              weight: 1.5,
-              fillColor: '#059669',
-              fillOpacity: 0.45,
+  // ---------------------------------------------------------------- Building footprints (viewport, zoom >= 15)
+  useEffect(() => {
+    if (!map) return;
+    let cancelled = false;
+    const load = () => {
+      if (!layers.buildings) {
+        setLayer('buildings', null);
+        return status('buildings', { state: 'off' });
+      }
+      if (map.getZoom() < BUILDING_MIN_ZOOM) {
+        setLayer('buildings', null);
+        return status('buildings', { state: 'info', detail: `Zoom in to level ${BUILDING_MIN_ZOOM}+ to load footprints` });
+      }
+      const b = map.getBounds();
+      status('buildings', { state: 'loading' });
+      getJSON(`/api/layers/buildings?bbox=${bboxParam([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()])}`)
+        .then((d) => {
+          if (cancelled) return;
+          const fc = d.buildings;
+          setLayer(
+            'buildings',
+            L.geoJSON(fc, {
+              style: () => ({ color: '#10b981', weight: 1, fillColor: '#059669', fillOpacity: 0.4 }),
+              onEachFeature: (f, l) =>
+                l.bindTooltip(
+                  `<div class="text-xs"><b>Building footprint</b><br/>${fmt(f.properties.area_m2)} m² (${fmt(f.properties.area_sqft)} sq ft)<br/><span class="opacity-70">Microsoft US Building Footprints</span></div>`,
+                  { sticky: true },
+                ),
             }),
-            onEachFeature: (feature, layer) => {
-              const p = feature.properties;
-              const tooltipContent = `
-                <div class="p-1.5 text-xs space-y-1 font-sans">
-                  <div class="font-bold text-emerald-400 border-b border-slate-700 pb-1">${p.building_id} (${p.structure_type})</div>
-                  <div><strong class="text-slate-300">Source:</strong> ${p.source}</div>
-                  <div><strong class="text-slate-300">APN:</strong> ${p.apn}</div>
-                  <div><strong class="text-slate-300">Area:</strong> ${p.area_sqft.toLocaleString()} sq ft</div>
-                  <div><strong class="text-slate-300">Value:</strong> $${p.assessed_value_usd.toLocaleString()} USD</div>
-                  <div><strong class="text-slate-300">Nearest Hydrant:</strong> ${p.nearest_hydrant_distance_ft} ft</div>
-                  <div class="text-[10px] text-amber-400 font-semibold mt-1">IBHS: ${p.roof_class}</div>
-                </div>
-              `;
-              layer.bindTooltip(tooltipContent, { sticky: true, className: 'glass-panel text-slate-100 rounded-xl' });
-            },
-          }).addTo(map);
+          );
+          status('buildings', {
+            state: 'ok',
+            detail: `${fc.features.length.toLocaleString()} footprints${fc.truncated ? ` (sample of ${fc.n_in_view.toLocaleString()} in view)` : ''}`,
+          });
+        })
+        .catch((e) => status('buildings', { state: 'error', detail: String(e.message || e) }));
+    };
+    load();
+    map.on('moveend', load);
+    return () => {
+      cancelled = true;
+      map.off('moveend', load);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.buildings]);
 
-          setBuildingsLayer(geoJsonLayer);
-        }
-      })
-      .catch((err) => console.error('Failed to load building footprints:', err));
-  }, [map, showBuildings]);
-
-  // Update CAL FIRE FHSZ Overlay
+  // ---------------------------------------------------------------- Click: point query
   useEffect(() => {
     if (!map) return;
-
-    if (calfireOverlay) {
-      map.removeLayer(calfireOverlay);
-      setCalfireOverlay(null);
-    }
-
-    if (!showCalFire) return;
-
-    fetch('http://localhost:8000/api/layers/calfire')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.layer) {
-          const { image_url, bounds } = data.layer;
-          const newOverlay = L.imageOverlay(`http://localhost:8000${image_url}`, bounds, {
-            opacity: 0.65,
-            interactive: false,
-          }).addTo(map);
-          setCalfireOverlay(newOverlay);
-        }
-      })
-      .catch((err) => console.error('Failed to load CAL FIRE overlay:', err));
-  }, [map, showCalFire]);
-
-  // Update Opacity
-  useEffect(() => {
-    if (bellwetherOverlay) {
-      bellwetherOverlay.setOpacity(opacity);
-    }
-  }, [opacity, bellwetherOverlay]);
-
-  // Handle Map Clicks for Wind-Adjusted 130ft Radiant Heat Corridor
-  useEffect(() => {
-    if (!map) return;
-
-    const handleMapClick = (e: L.LeafletMouseEvent) => {
+    const onClick = (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
-
-      if (fireMarker) map.removeLayer(fireMarker);
-      if (corridorCircle) map.removeLayer(corridorCircle);
-
-      const fireIcon = L.divIcon({
-        className: 'custom-fire-marker',
-        html: `
-          <div class="relative flex items-center justify-center">
-            <span class="animate-ping absolute inline-flex h-8 w-8 rounded-full bg-orange-400 opacity-75"></span>
-            <div class="relative p-2 bg-orange-600 border-2 border-amber-300 rounded-full shadow-lg text-white font-bold text-xs flex items-center justify-center">
-              🔥
-            </div>
-          </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      });
-
-      const newMarker = L.marker([lat, lng], { icon: fireIcon }).addTo(map);
-      setFireMarker(newMarker);
-
-      fetch('http://localhost:8000/api/query-corridor', {
+      const c = clickRefs.current;
+      if (c.marker) map.removeLayer(c.marker);
+      if (c.circle) map.removeLayer(c.circle);
+      c.marker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: '',
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+          html: '<div style="width:18px;height:18px;border-radius:9px;background:#f97316;border:3px solid #fde68a"></div>',
+        }),
+      }).addTo(map);
+      onSelectLocation({ loading: true, center: { lat, lng } });
+      getJSON('/api/query-corridor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lng, radius_feet: 130 }),
       })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.data) {
-            onSelectLocation(data.data);
-            const majorRadius = data.data.wind_adjusted_major_radius_meters || 39.62;
-
-            const newCircle = L.circle([lat, lng], {
-              radius: majorRadius,
-              color: '#f97316',
-              weight: 2,
-              fillColor: '#ea580c',
-              fillOpacity: 0.35,
-              dashArray: '4, 6',
-            }).addTo(map);
-
-            setCorridorCircle(newCircle);
-          }
+        .then((d) => {
+          onSelectLocation(d.data);
+          c.circle = L.circle([lat, lng], {
+            radius: d.data.wind_adjusted_major_radius_meters || d.data.radius_meters,
+            color: '#f97316',
+            weight: 2,
+            fillColor: '#ea580c',
+            fillOpacity: 0.25,
+            dashArray: '4 6',
+          }).addTo(map);
         })
-        .catch((err) => console.error('Failed to query corridor API:', err));
+        .catch((err) => onSelectLocation({ error: String(err.message || err), center: { lat, lng } }));
     };
-
-    map.on('click', handleMapClick);
-
+    map.on('click', onClick);
     return () => {
-      map.off('click', handleMapClick);
+      map.off('click', onClick);
     };
-  }, [map, fireMarker, corridorCircle]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
 
   return (
     <div className="w-full h-full relative">

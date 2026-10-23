@@ -1,3 +1,7 @@
+> **ARCHIVED (2026-10-23).** Describes the pre-2026-10-22 demo, whose fetchers returned hard-coded or synthetic data
+> (fake incidents, constant weather, a sine-wave 'LiDAR' slope, a grid of fake buildings). Those fetchers were deleted;
+> the map now uses real public sources listed in `backend/live_sources.py`.
+
 # Wildfire Risk Mitigation Pilot: Comprehensive Technical Documentation & Data Index
 
 Welcome to the **Wildfire Risk Mitigation Pilot** codebase. This repository contains the machine learning parsing modules, modular GIS data fetchers, FastAPI backend services, and Next.js interactive web dashboard created under the tri-party collaboration between the **San Bruno Fire Department (SBFD)**, **San Jose State University (SJSU Wildfire Interdisciplinary Research Center & Computer Engineering)**, and **Google X's Project Bellwether**.

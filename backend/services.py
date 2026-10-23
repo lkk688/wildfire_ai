@@ -1,729 +1,421 @@
 """
-Backend Data Services for Wildfire Risk Mitigation Dashboard
-Integrates Bellwether GeoTIFF parsing, Sentinel-2 STAC layers,
-CAL FIRE FHSZ insurance maps, CAL FIRE Active Incidents & NASA FIRMS hotspots,
-CDEC / RAWS station fuel moisture, USGS 3DEP LiDAR terrain slope,
-NOAA HRRR live weather/wind, Microsoft US Building Footprints, OSM Infrastructure,
-FEMA USA Structures, San Mateo & Santa Clara County (San Jose) multi-region support.
+Backend data services for the wildfire map view.
+
+Every value served here comes from a real source: the Bellwether GeoTIFFs shared with the pilot partners (local),
+public live services (see backend/live_sources.py), or the Microsoft building footprints extracted locally.
+Nothing is synthesised; when a source is unavailable or does not cover an area, the response says so.
 """
 
 import json
+import math
+import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 
-from src.data_fetchers import (
-    crop_bellwether_by_bbox,
-    get_active_perimeters,
-    get_thermal_hotspots,
-    get_fuel_moisture_stations,
-    get_terrain_slope_overlay,
-)
+from backend import live_sources as live
+from src.data_fetchers import crop_bellwether_by_bbox
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 REF_DATA_DIR = BASE_DIR / "SBFire_SJSU-20260730T030001Z-1-001" / "SBFire_SJSU" / "ref_data"
 STATIC_DIR = BASE_DIR / "backend" / "static"
+NUMBERS_TEX = BASE_DIR / "paper" / "numbers.tex"
 
-
-# Pre-defined City Bounding Boxes for Regional Selector
+# [min_lat, min_lng, max_lat, max_lng]
 REGION_BOUNDS = {
     "san_bruno": {"name": "San Bruno WUI (Peninsula)", "center": [37.618, -122.425], "bounds": [37.58, -122.46, 37.65, -122.39]},
     "san_jose": {"name": "San Jose Foothills (Santa Clara)", "center": [37.338, -121.886], "bounds": [37.25, -121.98, 37.42, -121.78]},
     "santa_cruz": {"name": "Santa Cruz Mountains (CZU WUI)", "center": [37.125, -122.050], "bounds": [37.02, -122.18, 37.22, -121.92]},
 }
+BW_CATS = ["Very Low", "Low", "Moderate", "Significant", "High", "Very High", "Extreme"]
+BW_CUTOFFS_1YR = [0.00004, 0.00020, 0.00100, 0.00400, 0.00667, 0.01333]
+FHSZ_CODES = {0: "Not in FHSZ", 1: "Moderate", 2: "High", 3: "Very High"}
+
+
+def region_bbox(region: str) -> Tuple[float, float, float, float]:
+    b = REGION_BOUNDS.get(region, REGION_BOUNDS["san_bruno"])["bounds"]
+    return (b[1], b[0], b[3], b[2])  # (min_lon, min_lat, max_lon, max_lat)
+
+
+def parse_bbox(bbox: Optional[str], region: str) -> Tuple[float, float, float, float]:
+    if bbox:
+        x0, y0, x1, y1 = (float(v) for v in bbox.split(","))
+        return (x0, y0, x1, y1)
+    return region_bbox(region)
+
+
+def _bw_path(is_5_year: bool) -> Path:
+    for f in REF_DATA_DIR.glob("prediction_for_2026*.tif"):
+        if ("2031" in f.name) == is_5_year:
+            return f
+    raise FileNotFoundError("Bellwether prediction GeoTIFF not found in ref_data")
 
 
 class GISDataService:
-    """Service to process rasters, generate transparent PNG overlays, and query metrics."""
-
     def __init__(self):
         STATIC_DIR.mkdir(parents=True, exist_ok=True)
         self.ref_data_dir = REF_DATA_DIR
 
-    def get_bellwether_overlay(
-        self,
-        is_5_year: bool = False,
-        region: str = "san_bruno",
-        min_lat: Optional[float] = None,
-        min_lng: Optional[float] = None,
-        max_lat: Optional[float] = None,
-        max_lng: Optional[float] = None
-    ) -> Dict:
-        """Generate transparent RGBA PNG overlay for Bellwether probability map."""
-        if min_lat is not None and min_lng is not None and max_lat is not None and max_lng is not None:
-            return crop_bellwether_by_bbox(min_lat, min_lng, max_lat, max_lng, is_5_year=is_5_year)
-        
-        reg_info = REGION_BOUNDS.get(region, REGION_BOUNDS["san_bruno"])
-        b = reg_info["bounds"]
-        return crop_bellwether_by_bbox(b[0], b[1], b[2], b[3], is_5_year=is_5_year)
-
-    def get_building_footprints_geojson(self) -> Dict:
-        """
-        Generate GeoJSON feature collection of building footprints and fire hydrants.
-        """
-        base_lat, base_lng = 37.618, -122.425
-        features = []
-
-        grid_rows, grid_cols = 8, 8
-        b_idx = 1001
-
-        for r in range(grid_rows):
-            for c in range(grid_cols):
-                lat_offset = (r - grid_rows / 2) * 0.0035 + (c % 2) * 0.0005
-                lng_offset = (c - grid_cols / 2) * 0.0045 + (r % 2) * 0.0005
-                
-                c_lat = base_lat + lat_offset
-                c_lng = base_lng + lng_offset
-
-                w_lat, w_lng = 0.00015, 0.00020
-                poly_coords = [
-                    [c_lng - w_lng, c_lat - w_lat],
-                    [c_lng + w_lng, c_lat - w_lat],
-                    [c_lng + w_lng, c_lat + w_lat],
-                    [c_lng - w_lng, c_lat + w_lat],
-                    [c_lng - w_lng, c_lat - w_lat],
-                ]
-
-                area_sqft = 2200 + (b_idx * 37) % 1500
-                hydrant_dist_ft = 45 + (b_idx * 13) % 180
-                ibhs_rating = "Class A Roof & Ember-Resistant Vents" if b_idx % 2 == 0 else "Standard Shingle / Wood Frame"
-                source_tag = "Microsoft US Building Footprints" if b_idx % 3 == 0 else ("OpenStreetMap (OSM)" if b_idx % 3 == 1 else "FEMA / DHS USA Structures")
-
-                feature = {
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [poly_coords]
-                    },
-                    "properties": {
-                        "building_id": f"MS-BLDG-{b_idx}",
-                        "apn": f"017-979-{b_idx % 900 + 100}",
-                        "source": source_tag,
-                        "area_sqft": area_sqft,
-                        "assessed_value_usd": area_sqft * 650,
-                        "roof_class": ibhs_rating,
-                        "nearest_hydrant_distance_ft": hydrant_dist_ft,
-                        "structure_type": "Single Family Residence" if b_idx % 5 != 0 else "Commercial / Fire Facility",
-                    }
-                }
-                features.append(feature)
-                b_idx += 1
-
-        return {
-            "type": "FeatureCollection",
-            "features": features,
-            "metadata": {
-                "total_structures": len(features),
-                "sources": [
-                    "Microsoft US Building Footprints (AI-extracted Polygons)",
-                    "OpenStreetMap (OSM Building & Hydrant Network)",
-                    "FEMA / DHS USA Structures (Critical Infrastructure)"
-                ]
-            }
-        }
-
-    def get_calfire_perimeters_layer(self) -> Dict:
-        """Get CAL FIRE active perimeters GeoJSON layer."""
-        return get_active_perimeters()
-
-    def get_firms_hotspots_layer(self) -> Dict:
-        """Get NASA FIRMS active thermal hotspots GeoJSON layer."""
-        return get_thermal_hotspots()
-
-    def get_fuel_moisture_layer(self) -> Dict:
-        """Get CDEC / RAWS station fuel moisture GeoJSON layer."""
-        return get_fuel_moisture_stations()
-
-    def get_terrain_slope_layer(self) -> Dict:
-        """Get USGS 3DEP LiDAR terrain slope overlay."""
-        return get_terrain_slope_overlay()
-
-    def get_bellwether_regions_guide(self) -> Dict:
-        """Guidance documentation on Bellwether data availability across San Jose & CONUS."""
-        return {
-            "conus_coverage": True,
-            "regions": REGION_BOUNDS,
-            "how_to_acquire": [
-                "1. Google Earth Engine (GEE): Accessible via ImageCollection Asset ID 'projects/bellwether-wildfire/assets/prediction_2026_conus' using GCP Project CMPElkk.",
-                "2. Google Cloud Storage (GCS) Buckets: Direct access to regional GeoTIFF / COG files (e.g. gs://bellwether-data-release/2026Q2/conus_100m.tif).",
-                "3. Python Crop/Clip Pipeline: Use crop_bellwether_by_bbox(min_lat, min_lng, max_lat, max_lng) to dynamically crop any city or region."
-            ]
-        }
-
-    def get_calfire_fhsz_overlay(self) -> Dict:
-        """Generate CAL FIRE FHSZ overlay."""
-        bounds = [[37.106709, -122.521221], [37.709478, -122.079250]]
-        h, w = 300, 300
-        rgba = np.zeros((h, w, 4), dtype=np.uint8)
-        
-        y, x = np.ogrid[:h, :w]
-        center_y, center_x = h / 2, w / 2
-        dist = np.sqrt((x - center_x)**2 + (y - center_y)**2)
-        
-        rgba[dist < 80] = [220, 38, 38, 160]
-        rgba[(dist >= 80) & (dist < 120)] = [249, 115, 22, 140]
-        rgba[(dist >= 120) & (dist < 160)] = [234, 179, 8, 120]
-
-        out_path = STATIC_DIR / "calfire_fhsz_overlay.png"
-        img = Image.fromarray(rgba, mode="RGBA")
-        img.save(out_path)
-
-        return {
-            "image_url": "/static/calfire_fhsz_overlay.png",
-            "bounds": bounds,
-            "dataset": "CAL FIRE FHSZ (State & Local Responsibility Area)",
-            "authority": "California Department of Forestry and Fire Protection",
-            "zones": {
-                "Very High FHSZ": {"color": "#DC2626", "building_code_requirement": "CBC Chapter 7A Defensible Space"},
-                "High FHSZ": {"color": "#F97316", "building_code_requirement": "Class A Roof & Vent Mesh"},
-                "Moderate FHSZ": {"color": "#EAB308", "building_code_requirement": "Standard Vegetation Buffer"},
-            }
-        }
-
-    def get_live_weather(self) -> Dict:
-        """Get live meteorological & wind vector parameters (HRRR model stream)."""
-        return {
-            "source": "NOAA HRRR (High-Resolution Rapid Refresh 1km)",
-            "timestamp": "Live Stream (Updated 15 mins ago)",
-            "temperature_f": 78.4,
-            "relative_humidity_pct": 21.5,
-            "wind_speed_mph": 16.2,
-            "wind_gust_mph": 24.5,
-            "wind_direction_deg": 225.0,
-            "wind_direction_cardinal": "SW ↙",
-            "fuel_moisture_ten_hour_pct": 6.8,
-            "red_flag_warning": True,
-        }
-
-    def get_risk_factors(self) -> List[Dict]:
-        """Get aggregated top risk factors and feature mappings."""
-        mapping_path = self.ref_data_dir / "feature_mapping_1_year.json"
-        cog_path = self.ref_data_dir / "risk_factors_1_year_cog.tif"
-
-        if not mapping_path.exists() or not cog_path.exists():
-            return []
-
-        with open(mapping_path, "r", encoding="utf-8") as f:
-            mapping = json.load(f)
-
+    # ------------------------------------------------------------------ Bellwether (real partner raster)
+    def bellwether_coverage(self) -> Optional[Tuple[float, float, float, float]]:
         try:
             import rasterio
-            with rasterio.open(cog_path) as src:
+            with rasterio.open(_bw_path(False)) as src:
+                b = src.bounds
+            return (b.left, b.bottom, b.right, b.top)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def get_bellwether_overlay(self, is_5_year: bool = False, region: str = "san_bruno", min_lat=None, min_lng=None,
+                               max_lat=None, max_lng=None) -> Dict:
+        if None not in (min_lat, min_lng, max_lat, max_lng):
+            bb = (min_lng, min_lat, max_lng, max_lat)
+        else:
+            bb = region_bbox(region)
+        cov = self.bellwether_coverage()
+        if cov is None:
+            return {"covered": False, "reason": "Bellwether GeoTIFFs are not available on this server."}
+        if bb[0] >= cov[2] or bb[2] <= cov[0] or bb[1] >= cov[3] or bb[3] <= cov[1]:
+            return {"covered": False, "coverage_bounds": [[cov[1], cov[0]], [cov[3], cov[2]]],
+                    "reason": "The Bellwether rasters shared with this pilot cover the San Mateo / Santa Cruz area only."}
+        layer = crop_bellwether_by_bbox(bb[1], bb[0], bb[3], bb[2], is_5_year=is_5_year)
+        layer["covered"] = True
+        try:
+            import rasterio
+            from rasterio.windows import from_bounds
+            with rasterio.open(_bw_path(is_5_year)) as src:
+                ib = (max(bb[0], cov[0]), max(bb[1], cov[1]), min(bb[2], cov[2]), min(bb[3], cov[3]))
+                a = src.read(1, window=from_bounds(*ib, transform=src.transform).round_offsets().round_lengths())
+            layer["valid_share_pct"] = round(float(np.mean(~np.isnan(a) & (a >= 0))) * 100, 1)
+        except Exception:  # noqa: BLE001
+            layer["valid_share_pct"] = None
+        layer["window"] = "2026-04-01 to 2027-04-01" if not is_5_year else "2026-04-01 to 2031-04-01"
+        layer["source"] = "Bellwether wildfire hazard model (X), partner GeoTIFF release"
+        return layer
+
+    def bellwether_at(self, lat: float, lon: float) -> Optional[Dict]:
+        try:
+            import rasterio
+            out = {}
+            for five, key in ((False, "1yr"), (True, "5yr")):
+                with rasterio.open(_bw_path(five)) as src:
+                    b = src.bounds
+                    if not (b.left <= lon <= b.right and b.bottom <= lat <= b.top):
+                        return None
+                    v = float(next(src.sample([(lon, lat)]))[0])
+                out[key] = None if (np.isnan(v) or v < 0) else v
+            if out["1yr"] is None:
+                return None
+            cat = BW_CATS[int(np.searchsorted(BW_CUTOFFS_1YR, out["1yr"], side="right"))]
+            return {"prob_1yr": out["1yr"], "prob_5yr": out["5yr"], "category_1yr": cat,
+                    "source": "Bellwether 100 m GeoTIFF (2026-04 release)"}
+        except Exception:  # noqa: BLE001
+            return None
+
+    def get_risk_factors(self, region: Optional[str] = None, is_5_year: bool = False) -> Dict:
+        """Bellwether risk-factor COG: per cell, the top-5 contributing (positive weight) and top-5 mitigating
+        (negative weight) features. Aggregated over the region: each feature's share of the total contributing
+        (or mitigating) weight, and the share of cells where it appears in the top 5."""
+        tag = "5" if is_5_year else "1"
+        mapping_path = self.ref_data_dir / f"feature_mapping_{tag}_year.json"
+        cog_path = self.ref_data_dir / f"risk_factors_{tag}_year_cog.tif"
+        if not mapping_path.exists() or not cog_path.exists():
+            return {"available": False, "reason": "Risk-factor files not found"}
+        mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+        import rasterio
+        from rasterio.windows import from_bounds
+        with rasterio.open(cog_path) as src:
+            if region:
+                bb = region_bbox(region)
+                b = src.bounds
+                ib = (max(bb[0], b.left), max(bb[1], b.bottom), min(bb[2], b.right), min(bb[3], b.top))
+                if ib[0] >= ib[2] or ib[1] >= ib[3]:
+                    return {"available": False, "reason": "No risk-factor coverage in this region"}
+                bands = src.read(window=from_bounds(*ib, transform=src.transform).round_offsets().round_lengths())
+            else:
                 bands = src.read()
+            desc = src.descriptions
+        out = {}
+        for kind in ("contributing", "mitigating"):
+            name_idx = [i for i, d in enumerate(desc) if d and kind in d and d.endswith("feature_name")]
+            weight_idx = [desc.index(desc[i].replace("_name", "_weight")) for i in name_idx]
+            sums: Dict[str, float] = {}
+            cells: Dict[str, int] = {}
+            n_cells = 0
+            for ni, wi in zip(name_idx, weight_idx):
+                ids, w = bands[ni], bands[wi]
+                ok = (ids != -9999) & (w != -9999) & ~np.isnan(w)
+                n_cells = max(n_cells, int(ok.sum()))
+                for fid, val in zip(ids[ok].astype(int), np.abs(w[ok])):
+                    name = mapping.get(str(fid), f"Feature {fid}")
+                    sums[name] = sums.get(name, 0.0) + float(val)
+                    cells[name] = cells.get(name, 0) + 1
+            total = sum(sums.values()) or 1.0
+            out[kind] = [{"feature": k, "weight_share_pct": round(v / total * 100, 1),
+                          "cells_in_top5_pct": round(cells[k] / max(n_cells, 1) * 100, 1)}
+                         for k, v in sorted(sums.items(), key=lambda x: -x[1])[:6]]
+        return {"available": True, "model": f"{tag}-year", **out, "region": region,
+                "source": "Bellwether risk-factor GeoTIFF (top-5 contributing and mitigating features per 100 m cell)"}
 
-            feature_ids = bands[0:10]
-            weights = bands[10:20]
-            valid_mask = (feature_ids != -9999) & (weights != -9999) & (~np.isnan(weights))
+    # ------------------------------------------------------------------ live layers
+    def get_perimeters(self, bbox) -> Dict:
+        out, errors = {}, {}
+        # current perimeters and incidents statewide (so active fires anywhere in California are visible);
+        # historical perimeters only for the requested area (the statewide archive is large)
+        for key, fn in (("current", lambda: live.current_perimeters(live.CA_BBOX)),
+                        ("historic", lambda: live.historic_perimeters(bbox)),
+                        ("incidents", lambda: live.calfire_incidents(live.CA_BBOX))):
+            try:
+                out[key] = fn()
+            except Exception as e:  # noqa: BLE001
+                out[key] = {"type": "FeatureCollection", "features": []}
+                errors[key] = str(e)[:200]
+        out["errors"] = errors
+        return out
 
-            sums = {}
-            for k in range(10):
-                f_ids = feature_ids[k][valid_mask[k]]
-                w_vals = weights[k][valid_mask[k]]
-                for fid, w in zip(f_ids, w_vals):
-                    name = mapping.get(str(int(fid)), f"Feature {int(fid)}")
-                    sums[name] = sums.get(name, 0.0) + float(w)
+    def get_weather(self, lat: float, lon: float) -> Dict:
+        w = live.current_weather(lat, lon)
+        try:
+            w["alerts"] = live.nws_alerts(lat, lon)
+        except Exception as e:  # noqa: BLE001
+            w["alerts"] = []
+            w["alerts_error"] = str(e)[:200]
+        w["red_flag_warning"] = any("Red Flag" in (a.get("event") or "") for a in w["alerts"])
+        return w
 
-            total = sum(sums.values())
-            results = [
-                {"feature": k, "weight_pct": round((v / total) * 100, 2)}
-                for k, v in sorted(sums.items(), key=lambda x: x[1], reverse=True)[:10]
-            ]
-            return results
-        except Exception:
-            return []
+    # ------------------------------------------------------------------ point query (map click)
+    def query_point(self, lat: float, lng: float, radius_feet: float = 130.0) -> Dict:
+        """Everything the real sources say about a clicked location. Each part fails independently."""
+        radius_m = radius_feet * 0.3048
+        res: Dict = {"center": {"lat": lat, "lng": lng}, "radius_feet": radius_feet, "radius_meters": round(radius_m, 1),
+                     "errors": {}}
 
-    def query_corridor(self, lat: float, lng: float, radius_feet: float = 130.0) -> Dict:
-        """Query wind-adjusted 130ft radiant heat corridor and parcel metrics."""
-        radius_meters = radius_feet * 0.3048
-        weather = self.get_live_weather()
-        prob_val = 0.0032
-        risk_level = "Significant"
+        def part(name, fn):
+            try:
+                res[name] = fn()
+            except Exception as e:  # noqa: BLE001
+                res[name] = None
+                res["errors"][name] = f"{type(e).__name__}: {str(e)[:160]}"
 
-        wind_speed = weather["wind_speed_mph"]
-        major_radius_meters = radius_meters * (1.0 + (wind_speed / 20.0))
-        buffer_area_sqm = np.pi * radius_meters * major_radius_meters
-        buffer_area_sqft = buffer_area_sqm * 10.7639
+        part("live_weather", lambda: self.get_weather(lat, lng))
+        part("bellwether", lambda: self.bellwether_at(lat, lng))
+        part("fhsz", lambda: live.fhsz_at(lat, lng))
+        part("land_cover", lambda: live.land_cover_around(lat, lng, max(radius_m, 50.0)))
+        part("historic_fires", lambda: live.historic_fires_at(lat, lng))
+        part("buildings_in_radius", lambda: live.buildings_within(lat, lng, radius_m))
+        part("terrain_slope_share_pct", lambda: live.slope_at(lat, lng))
 
-        threatened_structures = max(1, int(buffer_area_sqft / 11000.0))
-        total_sqft = threatened_structures * 2400.0
-        total_threatened_usd = total_sqft * 650.0
-        saved_usd = total_threatened_usd * 0.85
+        def nearest_station():
+            fc = live.fuel_moisture((lng - 0.6, lat - 0.6, lng + 0.6, lat + 0.6))
+            best = None
+            for f in fc["features"]:
+                lo, la = f["geometry"]["coordinates"]
+                d = math.hypot((lo - lng) * 111320 * math.cos(math.radians(lat)), (la - lat) * 110574) / 1000
+                if f["properties"].get("fuel_moisture_10h_pct") is not None and (best is None or d < best["distance_km"]):
+                    best = {**f["properties"], "distance_km": round(d, 1)}
+            return best
+        part("nearest_fuel_station", nearest_station)
 
-        land_cover_types = [
-            {"type": "Coastal Chaparral / Dense Scrub", "flammability": "High", "fuel_model": "FM4 (High Load Shrubs)"},
-            {"type": "Annual Grassland / Fine Fuels", "flammability": "Extreme (Fast Spread)", "fuel_model": "FM1 (Short Grass)"},
-            {"type": "WUI Residential Buffer Zone", "flammability": "Moderate (Structural)", "fuel_model": "Urban Mixed"},
-        ]
-        selected_land_cover = land_cover_types[hash(f"{lat:.3f},{lng:.3f}") % len(land_cover_types)]
-        apn_code = f"017-{abs(int(lat*10000))%900+100}-{abs(int(lng*10000))%900+100}"
-        
-        return {
-            "center": {"lat": lat, "lng": lng},
-            "radius_feet": radius_feet,
-            "radius_meters": round(radius_meters, 2),
-            "wind_adjusted_major_radius_meters": round(major_radius_meters, 2),
-            "live_weather": weather,
-            "local_risk": {
-                "wildfire_probability": round(prob_val, 6),
-                "probability_percentage": f"{prob_val * 100:.4f}%",
-                "risk_category": risk_level,
-                "insurance_risk_rating": f"Score {int(prob_val*10000)+15}/100 (Verisk FireLine Benchmark)",
-            },
-            "land_cover_and_cropland": {
-                "classification": selected_land_cover["type"],
-                "flammability_grade": selected_land_cover["flammability"],
-                "fuel_model": selected_land_cover["fuel_model"],
-                "source": "USDA NASS Cropland Data Layer (CDL) & LANDFIRE EVT",
-            },
-            "parcel_assessor": {
-                "apn": apn_code,
-                "county": "San Mateo / Santa Clara Assessor Office",
-                "zoning": "R-1 Single Family Residential / WUI Overlay",
-                "assessed_avg_val_per_sqft": "$650.00 USD",
-            },
-            "quantification_of_negative": {
-                "threatened_structures_count": threatened_structures,
-                "total_threatened_area_sqft": round(total_sqft, 2),
-                "estimated_threatened_value_usd": round(total_threatened_usd, 2),
-                "estimated_saved_value_usd": round(saved_usd, 2),
-                "roi_multiplier": f"{round((saved_usd / 420000), 1)}x Mitigation ROI",
-            },
-            "top_local_drivers": [
-                "Evaporative drought demand index (EDDI)",
-                "Surface downward shortwave radiation",
-                "Southwestern to northeastern winds",
-            ]
-        }
+        w = res.get("live_weather") or {}
+        if w.get("wind_speed_mph") is not None:
+            # A simple, stated geometric heuristic (not a fire-behaviour model): stretch the radius downwind by
+            # (1 + wind_mph / 20). The corridor drawn on the map uses this major axis.
+            res["wind_adjusted_major_radius_meters"] = round(radius_m * (1.0 + w["wind_speed_mph"] / 20.0), 1)
+            res["corridor_note"] = ("Downwind stretch = radius x (1 + wind mph / 20): a display heuristic, "
+                                    "not a fire-spread model.")
+        return res
 
+    # ------------------------------------------------------------------ catalog and status
     def get_data_catalog(self) -> List[Dict]:
-        """Return structured documentation for all multi-source datasets."""
-        return [
-            {
-                "id": "bellwether",
-                "name": "Google X Project Bellwether Wildfire Forecasts",
-                "provider": "Alphabet X (The Moonshot Factory)",
-                "resolution": "100 meters (Spatial Grid)",
-                "update_cadence": "Quarterly (Jan, Apr, Jul, Oct)",
-                "crs": "EPSG:4326 (WGS 84)",
-                "description": "Predictive AI/ML landscape hazard models trained on 500+ environmental factors. Supports dynamic spatial clipping across San Bruno, San Jose, Santa Cruz, and CONUS.",
-                "usage_in_app": "Used for primary 1-Year and 5-Year wildfire hazard map overlays."
-            },
-            {
-                "id": "calfire_perimeters",
-                "name": "CAL FIRE Active & Historical Fire Perimeters",
-                "provider": "CAL FIRE Operations / NIFC Wildfire Perimeters API",
-                "resolution": "Vector Polygons",
-                "update_cadence": "Real-Time / Incident Updates",
-                "crs": "EPSG:4326",
-                "description": "Real-time active fire perimeter polygons and historical fire scar geometries across Northern California WUI zones.",
-                "usage_in_app": "Renders active fire perimeter boundaries with containment % and agency dispatch info."
-            },
-            {
-                "id": "firms_hotspots",
-                "name": "NASA FIRMS Satellite Thermal Hotspots",
-                "provider": "NASA Earthdata / FIRMS VIIRS & MODIS Sensors",
-                "resolution": "375m (VIIRS) / 1km (MODIS)",
-                "update_cadence": "Every 1 - 3 Hours",
-                "crs": "EPSG:4326",
-                "description": "Active thermal anomaly hotspot points detected by NASA VIIRS satellite sensors with brightness Kelvin and Fire Radiative Power (MW).",
-                "usage_in_app": "Renders active thermal hotspot markers on the GIS map."
-            },
-            {
-                "id": "cdec_raws",
-                "name": "CDEC / RAWS Station Fuel Moisture (DFM/LFMC)",
-                "provider": "California Data Exchange Center (CDEC) & RAWS Network",
-                "resolution": "Monitoring Station Pins",
-                "update_cadence": "Hourly Station Telemetry",
-                "crs": "EPSG:4326",
-                "description": "Telemetry from ground RAWS weather stations reporting 10-hr, 100-hr dead fuel moisture (DFM) and live fuel moisture content (LFMC).",
-                "usage_in_app": "Displays ground station fuel moisture telemetry pins with Red Flag thresholds."
-            },
-            {
-                "id": "usgs_terrain",
-                "name": "USGS 3DEP LiDAR Elevation & Slope Terrain Overlay",
-                "provider": "U.S. Geological Survey (USGS)",
-                "resolution": "10m Grid Resolution",
-                "update_cadence": "Annual / Multi-Year Survey",
-                "crs": "EPSG:4326",
-                "description": "High-resolution LiDAR 10m DEM digital elevation model computing terrain slope steepness (%) and aspect orientation.",
-                "usage_in_app": "Renders transparent slope steepness overlays highlighting extreme rate-of-spread zones."
-            }
-        ]
+        return live.SOURCES
 
+    def check_sources(self, region: str) -> List[Dict]:
+        c = REGION_BOUNDS.get(region, REGION_BOUNDS["san_bruno"])["center"]
+        rows = live.check_all(region_bbox(region), c[0], c[1])
+        cov = self.bellwether_coverage()
+        for r in rows:
+            if r["id"] == "bellwether":
+                r["status"] = ({"ok": True, "sample": f"coverage lon {cov[0]:.2f}..{cov[2]:.2f}, lat {cov[1]:.2f}..{cov[3]:.2f}"}
+                               if cov else {"ok": False, "error": "GeoTIFFs not found"})
+        return rows
+
+    # ------------------------------------------------------------------ model comparison (computed from real layers)
     def get_model_evaluation_data(self, region: str = "san_bruno") -> Dict:
-        """
-        Provide structured Off-the-Shelf Model Evaluation and Gap Analysis data
-        comparing Google X Bellwether, CAL FIRE FHSZ, and Commercial Insurance Cat Models.
-        Emphasizes actionable user benefits for residents, firefighters, and municipal planners.
-        """
-        region_titles = {
-            "san_bruno": "San Bruno WUI & San Francisco Watershed Corridor",
-            "san_jose": "San Jose Foothills & Alum Rock WUI Interface",
-            "santa_cruz": "Santa Cruz Mountains & CZU Historical Burn Interface"
-        }
-        region_name = region_titles.get(region, "San Bruno WUI (Peninsula)")
+        bb = region_bbox(region)
+        out: Dict = {"region": region, "region_name": REGION_BOUNDS.get(region, {}).get("name", region),
+                     "models": MODEL_CARDS, "comparison_matrix": COMPARISON_MATRIX, "guidance": GUIDANCE,
+                     "research_evidence": self.research_evidence()}
+        try:
+            out["analysis"] = self._bellwether_vs_fhsz(bb)
+        except Exception as e:  # noqa: BLE001
+            out["analysis"] = {"available": False, "reason": f"{type(e).__name__}: {str(e)[:200]}"}
+        return out
 
-        return {
-            "region": region,
-            "region_name": region_name,
-            "milestone": "Milestone 1: Model Evaluation, Gap Analysis & Frontier AI",
-            "executive_summary": (
-                "This platform cross-references predictive machine learning models (Google X Bellwether 100m) "
-                "against statutory regulatory zoning (CAL FIRE FHSZ) and commercial insurance actuarial models (Verisk / Zesty.ai). "
-                "By pinpointing critical discrepancies between static regulatory maps and dynamic AI probabilities, the platform "
-                "empowers homeowners to challenge unjustified insurance cancellations and equips fire departments with real-time "
-                "tactical situational awareness."
-            ),
-            "user_value_proposition": {
-                "for_residents": (
-                    "Gain transparent, parcel-level visibility into your home's true wildfire risk. Understand why insurance companies "
-                    "hike premiums or drop policies, access guided home hardening steps (Class A roof, 1/16\" vents, 0-5ft defensible space), "
-                    "and unlock mandatory insurance discounts under California Department of Insurance (CDI) regulations."
-                ),
-                "for_firefighters": (
-                    "Equip incident commanders and fire marshals with high-resolution 100m forward-looking hazard probabilities, "
-                    "live NOAA HRRR wind plumes, CDEC/RAWS fuel moisture telemetry, and 130ft radiant heat contagion scoping to project "
-                    "structure-to-structure fire spread and calculate saved property value ROI ('Quantification of the Negative')."
-                ),
-                "ui_experience": (
-                    "A clean, responsive, dark-mode GIS interface featuring instant multi-source layer toggles, click-to-calculate "
-                    "wind-adjusted radiant heat corridors, clear side-by-side comparison matrices, and an integrated AI Copilot."
-                )
-            },
-            "models": [
+    def _bellwether_vs_fhsz(self, bb) -> Dict:
+        import rasterio
+        from rasterio.features import rasterize
+        from rasterio.windows import from_bounds
+        from shapely.geometry import shape
+        cov = self.bellwether_coverage()
+        if cov is None:
+            return {"available": False, "reason": "Bellwether GeoTIFFs not available."}
+        ib = (max(bb[0], cov[0]), max(bb[1], cov[1]), min(bb[2], cov[2]), min(bb[3], cov[3]))
+        if ib[0] >= ib[2] or ib[1] >= ib[3]:
+            return {"available": False, "reason": "No Bellwether coverage in this region (the shared rasters cover "
+                                                  "the San Mateo / Santa Cruz pilot area only)."}
+        with rasterio.open(_bw_path(False)) as src:
+            win = from_bounds(*ib, transform=src.transform).round_offsets().round_lengths()
+            p = src.read(1, window=win).astype(float)
+            tr = src.window_transform(win)
+        valid = ~np.isnan(p) & (p >= 0)
+        cat = np.searchsorted(BW_CUTOFFS_1YR, np.nan_to_num(p, nan=0), side="right")
+        zones = live.fhsz(ib)
+        code_of = {"Moderate": 1, "High": 2, "Very High": 3}
+        shapes = sorted(((shape(f["geometry"]), code_of.get(f["properties"]["zone"], 0)) for f in zones["features"]
+                         if f.get("geometry")), key=lambda x: x[1])  # higher zones drawn last
+        z = rasterize(shapes, out_shape=p.shape, transform=tr, fill=0, dtype="uint8") if shapes else np.zeros(p.shape, "uint8")
+        hist = live.historic_perimeters(ib, since_year=2000)
+        hshapes = [(shape(f["geometry"]), 1) for f in hist["features"] if f.get("geometry")]
+        burned = (rasterize(hshapes, out_shape=p.shape, transform=tr, fill=0, dtype="uint8") if hshapes
+                  else np.zeros(p.shape, "uint8")).astype(bool)
+        n = int(valid.sum())
+        if n == 0:
+            return {"available": False, "reason": "The Bellwether raster has no values in this region."}
+        crosstab = []
+        for zc, zname in FHSZ_CODES.items():
+            m = valid & (z == zc)
+            if not m.any():
+                continue
+            crosstab.append({"fhsz": zname, "cells": int(m.sum()), "area_pct": round(m.sum() / n * 100, 1),
+                             "bellwether_1yr_mean_pct": round(float(p[m].mean()) * 100, 3),
+                             "bellwether_1yr_median_pct": round(float(np.median(p[m])) * 100, 3),
+                             "share_high_or_above_pct": round(float((cat[m] >= 4).mean()) * 100, 1),
+                             "burned_since_2000_pct": round(float(burned[m].mean()) * 100, 1),
+                             "bellwether_category_pct": {BW_CATS[k]: round(float((cat[m] == k).mean()) * 100, 1)
+                                                         for k in range(7)}})
+        under = valid & (cat >= 4) & (z <= 1)   # Bellwether High+ where FHSZ is none / Moderate
+        over = valid & (z == 3) & (cat <= 1)    # FHSZ Very High where Bellwether is Low or Very Low
+        cases = self._largest_areas(under, p, z, tr, "Bellwether High or above, FHSZ none or Moderate") + \
+            self._largest_areas(over, p, z, tr, "FHSZ Very High, Bellwether Low or Very Low")
+        return {"available": True, "analysed_bbox": ib, "cells": n, "cell_size_m": 100,
+                "bellwether_valid_share_pct": round(n / p.size * 100, 1),
+                "bellwether_window": "2026-04-01 to 2027-04-01 (1-year model)",
+                "fhsz_sources": list(live.FHSZ_LAYERS.keys()),
+                "crosstab": crosstab,
+                "rank_correlation_spearman": self._spearman(p[valid], z[valid]),
+                "disagreement_area_pct": {"bellwether_high_fhsz_low": round(float(under.sum()) / n * 100, 1),
+                                          "fhsz_very_high_bellwether_low": round(float(over.sum()) / n * 100, 1)},
+                "disagreement_areas": cases,
+                "note": ("FHSZ maps long-term hazard (expected fire behaviour); Bellwether gives the probability of a "
+                         "cell burning in the next year. Disagreement shows where they differ, not which is right.")}
 
-                {
-                    "id": "bellwether",
-                    "name": "Google X Project Bellwether",
-                    "type": "Predictive AI/ML Landscape Hazard Model",
-                    "developer": "Alphabet X (The Moonshot Factory)",
-                    "spatial_resolution": "100 meters (Continuous Spatial Grid)",
-                    "temporal_horizon": "1-Year and 5-Year Forward Probability Horizons",
-                    "update_cadence": "Quarterly (Refreshed 4x per year)",
-                    "output_metric": "Absolute Burn Probability (0.0% to 100.0%)",
-                    "core_methodology": (
-                        "Deep neural network trained on 500+ dynamic environmental factors including satellite NDVI/NDMI, "
-                        "ERA5/HRRR weather vectors, evaporative demand (EDDI), 3D LiDAR topography, and fine-grain fuel loads."
-                    ),
-                    "strengths": [
-                        "Dynamic responsiveness: captures shifting drought conditions, fine-grain fuel desiccations, and seasonal winds",
-                        "High spatial granularity (100m) uncovers micro-climate fire corridors overlooked by regional boundaries",
-                        "Quarterly cadence reflects landscape remediation, prescribed burns, or recent fuel buildup"
-                    ],
-                    "limitations": [
-                        "Does not model active suppression interventions (firefighter actions, water drops) in real time",
-                        "Does not account for smoke/ember dispersion damage or structural hardening at the parcel scale",
-                        "Outputs absolute statistical probabilities that require domain calibration for regulatory enforcement"
-                    ],
-                    "color": "#F97316", # Orange
-                    "badge": "Dynamic AI Model"
-                },
-                {
-                    "id": "calfire_fhsz",
-                    "name": "CAL FIRE FHSZ (Fire Hazard Severity Zones)",
-                    "type": "Statutory & Regulatory Land Classification",
-                    "developer": "California Department of Forestry and Fire Protection (CAL FIRE)",
-                    "spatial_resolution": "Polygon Zonal Classification (Moderate, High, Very High)",
-                    "temporal_horizon": "Long-Term Baseline (30-to-50-Year Fire Potential)",
-                    "update_cadence": "Multi-Year / Decadal (Updated roughly once every 10–15 years)",
-                    "output_metric": "Categorical Hazard Tiers: Moderate, High, Very High (LRA/SRA)",
-                    "core_methodology": (
-                        "Physics-based flame length potential modeled across 30–50 years of historical fire weather, "
-                        "terrain steepness (slope/aspect), surface-to-volume fuel load, and ember production zones."
-                    ),
-                    "strengths": [
-                        "Statutory and legally binding authority under California Public Resources Code (PRC 4201–4204)",
-                        "Directly mandates California Building Code Chapter 7A ignition-resistant construction standards",
-                        "Triggers mandatory natural hazard disclosure (NHD) in real estate transactions"
-                    ],
-                    "limitations": [
-                        "Static nature fails to reflect post-fire fuel removal, recent fuel mastication, or active vegetation clearing",
-                        "Coarse multi-year update cycle cannot capture year-to-year extreme drought cycles or flash fuels",
-                        "Measures hazard (physical event likelihood), not vulnerability or financial risk"
-                    ],
-                    "color": "#EF4444", # Red
-                    "badge": "Regulatory Baseline"
-                },
-                {
-                    "id": "insurance_actuarial",
-                    "name": "Commercial Insurance Cat-Models (Verisk FireLine / Zesty.ai)",
-                    "type": "Actuarial Catastrophe & Underwriting Risk Model",
-                    "developer": "Private Insurers & Analytics Firms (Verisk, CoreLogic, Zesty.ai, Milliman)",
-                    "spatial_resolution": "Parcel-Centric & Neighborhood 1,000ft Buffer",
-                    "temporal_horizon": "Annual Policy Renewal Cycle (12 Months)",
-                    "update_cadence": "Annual / Semi-Annual Underwriting Filings",
-                    "output_metric": "Relative Risk Index (0–100 or 1–30 Risk Scores)",
-                    "core_methodology": (
-                        "Combines fuel type proximity within 1,000ft, slope steepness, Public Protection Classification (PPC) "
-                        "distance to nearest fire station/hydrant, and aerial tree canopy overhang."
-                    ),
-                    "strengths": [
-                        "Directly drives homeowner insurance policy issuance, deductible pricing, and market availability",
-                        "Modern versions (Zesty.ai Z-FIRE) incorporate aerial imagery for roof material and defensible space",
-                        "Standardizes catastrophic financial loss exposure for reinsurance solvency"
-                    ],
-                    "limitations": [
-                        "Propensity for 'blanket zip-code cancellations' without on-the-ground home hardening verification",
-                        "Proprietary black-box algorithms that create public confusion and exacerbate the CA FAIR Plan crisis",
-                        "Often penalizes steep slopes regardless of whether vegetative fuels have been completely cleared"
-                    ],
-                    "color": "#8B5CF6", # Purple
-                    "badge": "Financial / Actuarial"
-                }
-            ],
-            "comparison_matrix": [
-                {
-                    "dimension": "Primary Objective",
-                    "bellwether": "Predict absolute probability of fire entering a 100m grid cell within 1 or 5 years",
-                    "calfire": "Delineate statutory hazard zones to enforce building codes and defensible space laws",
-                    "insurance": "Quantify probability of total loss to price annual property premiums and manage solvency"
-                },
-                {
-                    "dimension": "Spatial Granularity",
-                    "bellwether": "100m x 100m Continuous Raster Grid (Multi-spectral & Topographic)",
-                    "calfire": "Regional Vector Polygons (Aggregated Parcel & Watershed boundaries)",
-                    "insurance": "Parcel Footprint + 1,000ft Surrounding Fuel & Hydrant Buffer"
-                },
-                {
-                    "dimension": "Update Frequency",
-                    "bellwether": "Quarterly (Captures seasonal vegetation growth & live fuel moisture drops)",
-                    "calfire": "Decadal (10-15 year cycles; misses short-term fuel treatment progress)",
-                    "insurance": "Annual (Tied to reinsurance treaty renewals and state rate filings)"
-                },
-                {
-                    "dimension": "Live Fuel & Weather",
-                    "bellwether": "Dynamic daily/hourly satellite moisture + HRRR wind vectors + EDDI drought",
-                    "calfire": "Static 95th-percentile worst-case historical climate assumptions",
-                    "insurance": "Static or annual satellite vegetation canopy coverage + regional loss history"
-                },
-                {
-                    "dimension": "Fire Suppression Impact",
-                    "bellwether": "Not modeled (forecasts pure physical landscape burn probability)",
-                    "calfire": "Indirectly considered via road access & firefighter response distance",
-                    "insurance": "Heavily weighted via ISO Public Protection Classification (hydrant/station distance)"
-                },
-                {
-                    "dimension": "Building Hardening",
-                    "bellwether": "Not modeled (landscape-level fuel & terrain focus)",
-                    "calfire": "Prescribes building codes (CBC Ch 7A), but does not inspect individual homes",
-                    "insurance": "Varies: classical models ignore it; CDI 'Safer from Wildfires' now mandates discounts"
-                },
-                {
-                    "dimension": "Legal & Public Role",
-                    "bellwether": "Operational AI decision-support for fire agencies and municipal planning",
-                    "calfire": "Statutory legal disclosure on real estate sales and municipal fire zoning",
-                    "insurance": "Contractual basis for property insurance coverage, exclusions, and premiums"
-                }
-            ],
-            "gap_analysis_cases": [
-                {
-                    "id": "case_1",
-                    "title": "Discrepancy 1: Dynamic High vs. Static Moderate (Under-Warning in Regulatory Maps)",
-                    "location": "Crestmoor Canyon & Skyline Ridgeline (San Bruno WUI)",
-                    "divergence_type": "Under-Warning Gap (AI > Regulatory)",
-                    "bellwether_score": "High (Top 12% Risk, 0.58% annual burn probability)",
-                    "calfire_rating": "Moderate FHSZ (Local Responsibility Area)",
-                    "insurance_rating": "Score 74/100 (Surcharge Applied)",
-                    "root_cause": (
-                        "CAL FIRE's Moderate rating is based on a 30-year lack of recent ignition history in this canyon. "
-                        "However, Bellwether's 100m neural model identifies severe fine fuel desiccation (EDDI index > 90th percentile) "
-                        "combined with afternoon maritime wind channeling through the canyon gap, creating an acute forward-looking hazard."
-                    ),
-                    "operational_implication": (
-                        "Fire Marshals cannot rely solely on the statutory Moderate zone for inspections. SBFD should deploy proactive "
-                        "defensible space enforcement and pre-position brush patrols during high-wind Red Flag events regardless of the official map."
-                    )
-                },
-                {
-                    "id": "case_2",
-                    "title": "Discrepancy 2: Static Very High vs. Dynamic Low (Over-Warning After Fuel Treatments)",
-                    "location": "San Francisco Watershed Fuel Break & Mastication Corridor",
-                    "divergence_type": "Over-Warning Gap (Regulatory > AI)",
-                    "bellwether_score": "Low (0.014% annual burn probability)",
-                    "calfire_rating": "Very High FHSZ (State Responsibility Area)",
-                    "insurance_rating": "Score 88/100 (Severe Underwriting Restriction)",
-                    "root_cause": (
-                        "CAL FIRE maintains a Very High designation due to the steep western slope and historical chapparal fuel loads. "
-                        "However, recent mechanical fuel mastication and goat grazing cleared 85% of ladder fuels. Bellwether's quarterly "
-                        "satellite inputs detected the drastic reduction in vegetative biomass and updated the probability downward, whereas "
-                        "CAL FIRE maps cannot legally update without a lengthy multi-year administrative process."
-                    ),
-                    "operational_implication": (
-                        "Homeowners in this corridor suffer unjustified insurance cancellations. Municipalities can use Bellwether's verified "
-                        "fuel reduction data as quantitative evidence to petition the California Department of Insurance for community risk discounts."
-                    )
-                },
-                {
-                    "id": "case_3",
-                    "title": "Discrepancy 3: The Insurance Non-Renewal Friction Gap (The Actuarial Disconnect)",
-                    "location": "Upper San Bruno WUI Interface / San Bruno Mountain Foothills",
-                    "divergence_type": "Actuarial Disconnect",
-                    "bellwether_score": "Significant (0.28% annual burn probability)",
-                    "calfire_rating": "High FHSZ (LRA)",
-                    "insurance_rating": "Policy Non-Renewed / Forced onto CA FAIR Plan",
-                    "root_cause": (
-                        "Commercial cat-models applied a blunt 1,000-foot buffer brush penalty to the entire zip code. Although the specific "
-                        "residence invested in a Class A metal roof, ember-resistant 1/16\" vents, and a 0–5ft gravel noncombustible zone, "
-                        "the insurer's off-the-shelf automated underwriting model failed to ingest property-level hardening attributes."
-                    ),
-                    "operational_implication": (
-                        "Demonstrates the urgent necessity of Tri-Party Pilot Objective 3 (Home Hardening & Attribute Extraction via UAV/AI) "
-                        "to bridge the chasm between commercial cat models and actual homeowner resilience."
-                    )
-                }
-            ],
-            "regional_metrics": {
-                "agreement_area_percentage": 68.4,
-                "under_warning_percentage": 18.2,
-                "over_warning_percentage": 13.4,
-                "mean_probability_1yr": 0.185,
-                "mean_probability_5yr": 0.642,
-                "fair_plan_enrollment_surge": "+142% over past 3 years in target zip codes"
-            },
-            "actionable_recommendations": {
-                "for_fire_marshals": [
-                    "Implement a hybrid inspection index: combine statutory FHSZ boundaries with Bellwether's quarterly 100m dynamic probability hot-spots.",
-                    "Focus municipal brush clearance code enforcement along dynamic wind-funnel corridors rather than relying on static 10-year-old maps.",
-                    "Leverage verified fuel reduction data to document 'Quantification of the Negative' ROI for city council budget allocations."
-                ],
-                "for_homeowners": [
-                    "Complete all 10 mitigation steps under the California Department of Insurance 'Safer from Wildfires' framework to legally mandate premium discounts.",
-                    "Attain an IBHS 'Wildfire Prepared Home' designation (Base or Plus) with third-party verification to challenge unjustified commercial carrier non-renewals.",
-                    "Request carrier risk score transparency: policyholders have a legal right in California to receive their specific wildfire risk factors and appeal inaccuracies."
-                ]
-            },
-            "simulator_scenarios": [
-                {
-                    "id": "sim_cleared_slope",
-                    "name": "Recently Cleared Fuel Break on Steep Slope",
-                    "terrain": "35% Steep Canyon Slope",
-                    "fuel_state": "80% Fuel Cleared / Masticated (Zone 1 & 2)",
-                    "hardening": "Class A Roof, Ember Vents Installed",
-                    "bellwether_pred": "Low (0.018%)",
-                    "calfire_fhsz": "Very High FHSZ",
-                    "insurance_score": "68/100 (Elevated)",
-                    "diagnosis": "Severe regulatory over-warning: CAL FIRE cannot reflect the cleared fuel without a 10-year map revision, causing insurance friction."
-                },
-                {
-                    "id": "sim_dry_wind_tunnel",
-                    "name": "Seasonal Dry Grass in Coastal Wind Tunnel",
-                    "terrain": "Gentle 8% Slope",
-                    "fuel_state": "Dense Dry Annual Grass (1-hr DFM < 4%)",
-                    "hardening": "Unhardened Wood Shake Roof",
-                    "bellwether_pred": "Extreme (1.42%)",
-                    "calfire_fhsz": "Moderate FHSZ",
-                    "insurance_score": "82/100 (High Risk)",
-                    "diagnosis": "Critical regulatory under-warning: CAL FIRE historical data fails to capture explosive seasonal flash fuels, exposing residents to surprise ignitions."
-                },
-                {
-                    "id": "sim_hardened_watershed",
-                    "name": "Hardened Residence Adjacent to SF Watershed",
-                    "terrain": "18% Moderate Ridge Slope",
-                    "fuel_state": "Dense Chaparral (30ft away)",
-                    "hardening": "Full IBHS 'Wildfire Prepared Home' Plus Certification",
-                    "bellwether_pred": "Significant (0.34%)",
-                    "calfire_fhsz": "High FHSZ",
-                    "insurance_score": "38/100 (Eligible for 18% CDI Discount)",
-                    "diagnosis": "Resilience breakthrough: Despite high landscape hazard, structural hardening and 0-5ft defensible space significantly suppress ignition probability."
-                }
-            ],
-            "academic_and_frontier_models": {
-                "title": "Academic Open-Source SOTA & Frontier AI Wildfire Models",
-                "description": (
-                    "Beyond commercial off-the-shelf products, academic research and open-source benchmarks "
-                    "have introduced physics-guided deep learning and neural operators for wildfire modeling."
-                ),
-                "open_source_models": [
-                    {
-                        "name": "Physics-Informed Neural Networks (PINNs / B-PINNs)",
-                        "paradigm": "Physics-Guided PDE Solvers (Level-Set & Eikonal)",
-                        "open_access": "Open Source (GitHub / arXiv)",
-                        "highlights": "Embeds Rothermel rate of spread (ROS) and energy conservation directly into the neural loss function, preventing non-physical firefront jumps."
-                    },
-                    {
-                        "name": "Fourier Neural Operators (FNO & DeepONet)",
-                        "paradigm": "Infinite-Dimensional Operator Learning",
-                        "open_access": "Open Weights & Code",
-                        "highlights": "Learns mapping from terrain/weather fields to fire arrival time; zero-shot super-resolution upscaling (100m to 10m), 1,000x faster than FARSITE."
-                    },
-                    {
-                        "name": "Spatio-Temporal Graph Neural Networks (ST-GNNs)",
-                        "paradigm": "Non-Euclidean Dynamic Message Passing",
-                        "open_access": "PyG / DGL Repositories",
-                        "highlights": "Models ridges, canyons, and road firebreaks as graph nodes, capturing non-local ember jumps and canyon chimney wind effects."
-                    },
-                    {
-                        "name": "Google Research - Next Day Wildfire Spread (NDWS)",
-                        "paradigm": "Multi-Modal ConvLSTM / U-Net Benchmark",
-                        "open_access": "Kaggle Benchmark & Code",
-                        "highlights": "Standardized 1km continental US benchmark predicting 24-hour fire front expansion from 12 environmental features."
-                    },
-                    {
-                        "name": "WildfireSpreadTS (WSTS & WSTS+)",
-                        "paradigm": "Spatio-Temporal Transformer Benchmark",
-                        "open_access": "NeurIPS Datasets Track",
-                        "highlights": "Time-series benchmark tracking continuous multi-day fire scars with multi-spectral satellite reflectance bands."
-                    },
-                    {
-                        "name": "FireSentry",
-                        "paradigm": "High-Fidelity Multi-Modal Drone Benchmark",
-                        "open_access": "ACM SIGKDD 2026",
-                        "highlights": "Integrates aerial thermal/RGB drone video with ground forestry telemetry for fine-grained localized fire behavior."
-                    },
-                    {
-                        "name": "WIFIRE Lab / BurnPro3D (UC San Diego)",
-                        "paradigm": "Coupled Fire-Atmosphere Cloud Simulation",
-                        "open_access": "Academic Platform / NSF Supported",
-                        "highlights": "Supercomputer-backed dynamic physical fire simulation tailored for prescribed burns and active wildfire dispatch."
-                    }
-                ],
-                "llm_prediction_requirements": {
-                    "overview": (
-                        "Large Language Models (LLMs) and Multimodal Foundation Models are not suited as raw numerical "
-                        "PDE solvers; rather, they serve as high-level **Agentic Reasoning Controllers and Spatial Copilots** "
-                        "that ingest multi-modal environmental streams, orchestrate specialized GIS tools, and generate "
-                        "calibrated tactical decisions."
-                    ),
-                    "required_data_inputs": [
-                        {
-                            "category": "1. Dynamic Meteorological Vectors",
-                            "variables": "10m wind speed, wind azimuth (direction), gust velocity, ambient temperature, relative humidity (RH), and Haines atmospheric stability index.",
-                            "frequency": "Hourly updates (NOAA HRRR / RTMA)"
-                        },
-                        {
-                            "category": "2. Fuel Moisture & Vegetation Classification",
-                            "variables": "1-hr, 10-hr, 100-hr Dead Fuel Moisture (DFM), Live Fuel Moisture Content (LFMC), and Scott & Burgan 40 standard fuel models (fuel load, surface-to-volume ratio).",
-                            "frequency": "Daily / Weekly (CDEC, RAWS, LANDFIRE)"
-                        },
-                        {
-                            "category": "3. High-Resolution Topography & Terrain",
-                            "variables": "Digital Elevation Model (DEM), slope steepness percentage (%), aspect orientation (solar desiccation angle), and canyon wind funnel geometry.",
-                            "frequency": "Static / Periodic (USGS 3DEP 10m LiDAR)"
-                        },
-                        {
-                            "category": "4. Active Thermal Hotspots & Perimeters",
-                            "variables": "Satellite thermal anomaly coordinates (NASA VIIRS/MODIS), Brightness Kelvin, Fire Radiative Power (MW), and active containment perimeters (NIFC/CAL FIRE).",
-                            "frequency": "Near real-time (every 1 - 3 hours)"
-                        },
-                        {
-                            "category": "5. Structural Vulnerability & Hardening Layer",
-                            "variables": "Building footprints (Microsoft / OSM), roof material class (Class A vs wood shake), 0-5ft Zone 0 defensible space clearance, and evacuation road bottlenecks.",
-                            "frequency": "Annual / UAV Drone Scans"
-                        },
-                        {
-                            "category": "6. Historical Fire Return & Treatment Boundaries",
-                            "variables": "Historical fire perimeter database (MTBS), recent prescribed burns, and mechanical fuel mastication break corridors.",
-                            "frequency": "Annual / Seasonal updates"
-                        }
-                    ],
-                    "agentic_reasoning_architecture": (
-                        "To perform reliable predictions, the LLM utilizes an **Agentic ReAct Tool-Calling Loop**: "
-                        "1) The user provides a location query; 2) The LLM calls spatial GIS tools to extract local wind, "
-                        "fuel moisture, and slope; 3) The LLM feeds these variables into empirical equations (Rothermel ROS, "
-                        "Stefan-Boltzmann radiant heat flux); 4) The LLM synthesizes a calibrated, defensible risk briefing."
-                    )
-                }
-            }
-        }
+    @staticmethod
+    def _spearman(a, b) -> Optional[float]:
+        from scipy.stats import spearmanr
+        if len(a) < 10 or len(set(b.tolist())) < 2:
+            return None
+        return round(float(spearmanr(a, b).correlation), 3)
+
+    def _largest_areas(self, mask, p, z, tr, label, k: int = 3) -> List[Dict]:
+        from scipy import ndimage
+        lab, n = ndimage.label(mask)
+        if n == 0:
+            return []
+        sizes = ndimage.sum(mask, lab, index=np.arange(1, n + 1))
+        out = []
+        for idx in np.argsort(-sizes)[:k]:
+            m = lab == idx + 1
+            rr, cc = np.nonzero(m)
+            r0, c0 = rr.mean(), cc.mean()
+            lon, lat = tr * (c0 + 0.5, r0 + 0.5)
+            case = {"type": label, "lat": round(lat, 5), "lon": round(lon, 5), "area_ha": int(m.sum()),
+                    "bellwether_1yr_mean_pct": round(float(p[m].mean()) * 100, 3),
+                    "fhsz": FHSZ_CODES[int(np.bincount(z[m]).argmax())]}
+            try:
+                case["past_fires"] = live.historic_fires_at(lat, lon)[:3]
+            except Exception:  # noqa: BLE001
+                case["past_fires"] = None
+            try:
+                case["land_cover"] = live.land_cover_around(lat, lon, 150)["within_radius_pct"]
+            except Exception:  # noqa: BLE001
+                case["land_cover"] = None
+            try:
+                case["buildings_within_300m"] = live.buildings_within(lat, lon, 300)["count"]
+            except Exception:  # noqa: BLE001
+                case["buildings_within_300m"] = None
+            out.append(case)
+        return out
+
+    def research_evidence(self) -> Dict:
+        """Held-out results from this project's own evaluation (paper/numbers.tex, generated from output/)."""
+        if not NUMBERS_TEX.exists():
+            return {"available": False}
+        m = dict(re.findall(r"\\newcommand\{\\(\w+)\}\{([^}]*)\}", NUMBERS_TEX.read_text()))
+        g = lambda k: m.get(k)  # noqa: E731
+        return {"available": True, "source": "paper/numbers.tex (generated from output/ by scripts/paper/make_tables.py)",
+                "items": [
+                    {"task": "Pre-fire: which single home will be destroyed (2024-25 test fires)",
+                     "result": (f"Claude Sonnet AUROC {g('preClaudeSonnetAuc')}; frozen DINOv2 probe {g('refDinoAuc')}; "
+                               f"building-metadata model {g('refMetaAuc')}"),
+                     "meaning": "Weak: aerial images before a fire carry little building-level signal."},
+                    {"task": "Pre-fire: same-fire neighbours 15-100 m apart (exposure controlled)",
+                     "result": (f"Sonnet pair accuracy {g('pairClaudeSonnetImg')} on test fires, {g('pairValClaudeSonnetImg')} on the "
+                               f"pre-registered replication; metadata-only baseline {g('refMetaPair')}"),
+                     "meaning": "Near chance once fire exposure is controlled."},
+                    {"task": "Post-fire: recognise destroyed homes",
+                     "result": f"Sonnet {g('posctlSonnet')} (positive control); Qwen3.5-4B + LoRA {g('pfSftFour')}; frozen DINOv2 probe {g('pfLp')} AUROC",
+                     "meaning": "Strong: damage is visible after the fire."},
+                    {"task": "Effect of a random (not by-fire) split",
+                     "result": f"pre-fire AUROC {g('splitMetaEvent')} by fire vs {g('splitMetaRandom')} random",
+                     "meaning": "Random splits inflate apparent skill."},
+                ]}
 
 
+# ---------------------------------------------------------------------- descriptive content (factual, sourced)
+MODEL_CARDS = [
+    {"id": "bellwether", "name": "Bellwether wildfire hazard model", "developer": "Bellwether, X (Alphabet)",
+     "type": "Machine-learning landscape hazard model", "spatial_resolution": "100 m",
+     "update_cadence": "Quarterly", "output_metric": "Probability of a cell being inside a wildfire perimeter (1 or 5 years)",
+     "core_methodology": "Trained on hundreds of regularly updated vegetation, weather, terrain and human-presence "
+                         "variables; outputs are calibrated to observed fire frequencies (Bellwether release docs).",
+     "strengths": ["Forward-looking probability at 100 m", "Updated quarterly as conditions change"],
+     "limitations": ["Not a fire-spread or real-time model", "Does not model smoke damage or structure vulnerability",
+                     "Scores change between versioned releases"],
+     "color": "#F97316", "badge": "Machine learning", "in_this_app": "Map overlay and comparison (pilot area only)"},
+    {"id": "calfire_fhsz", "name": "CAL FIRE Fire Hazard Severity Zones", "developer": "CAL FIRE",
+     "type": "Regulatory hazard classification", "spatial_resolution": "Zone polygons",
+     "update_cadence": "Periodic map revisions (SRA 2023, LRA 2025)", "output_metric": "Moderate / High / Very High",
+     "core_methodology": "Hazard based on expected fire behaviour and burn probability over decades, from fuels, "
+                         "terrain and weather.",
+     "strengths": ["Legal basis for building standards and disclosure", "Statewide and consistent"],
+     "limitations": ["Measures hazard, not the chance of burning next year", "Updated infrequently"],
+     "color": "#EF4444", "badge": "Regulatory", "in_this_app": "Map overlay and comparison (official services)"},
+    {"id": "insurance", "name": "Commercial insurance catastrophe models", "developer": "Private vendors",
+     "type": "Actuarial risk scores", "spatial_resolution": "Parcel level", "update_cadence": "Varies by vendor",
+     "output_metric": "Proprietary scores", "core_methodology": "Proprietary; not available to this app.",
+     "strengths": ["Used directly in underwriting"], "limitations": ["Methods and scores are not public"],
+     "color": "#8B5CF6", "badge": "Proprietary", "in_this_app": "Not shown: no real data available"},
+]
+COMPARISON_MATRIX = [
+    {"dimension": "Question answered", "bellwether": "Will this 100 m cell burn in the next 1 or 5 years?",
+     "calfire": "How severe is the long-term wildfire hazard here?", "insurance": "What is the expected loss for this policy?"},
+    {"dimension": "Resolution", "bellwether": "100 m raster", "calfire": "Zone polygons", "insurance": "Parcel"},
+    {"dimension": "Updates", "bellwether": "Quarterly", "calfire": "Map revisions every several years",
+     "insurance": "Vendor-specific"},
+    {"dimension": "Structure vulnerability", "bellwether": "Not modelled", "calfire": "Not modelled (drives building code)",
+     "insurance": "Varies"},
+    {"dimension": "Access", "bellwether": "Partner GeoTIFFs", "calfire": "Public", "insurance": "Proprietary"},
+]
+GUIDANCE = {
+    "for_fire_marshals": [
+        "Use FHSZ for code and disclosure obligations, and Bellwether's near-term probability to prioritise inspections "
+        "and fuel work where the two disagree.",
+        "Check current conditions on the map (HRRR wind, RAWS fuel moisture, NWS Red Flag Warnings) before field decisions.",
+    ],
+    "for_homeowners": [
+        "California's 'Safer from Wildfires' regulation requires admitted insurers to recognise listed mitigation "
+        "measures in pricing (CDI).",
+        "Home hardening and defensible space (Zones 0-2) follow CAL FIRE and Board of Forestry guidance.",
+    ],
+}

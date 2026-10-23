@@ -54,3 +54,8 @@ output/annotation/*/answer_key.csv
 
 # Generated experiment outputs, splits, audits (kept locally; regenerate from scripts/)
 output/
+
+# large local extracts
+data/*.parquet
+backend/static/slope_*.png
+backend/static/ndvi_*.png

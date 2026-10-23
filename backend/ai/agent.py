@@ -42,13 +42,14 @@ class WildfireAIAgent:
         base_instructions = f"""You are the **Wildfire AI Copilot**, an intelligent, authoritative decision-support assistant embedded within the Wildfire AI GIS Platform.
 Active Target Region: **{active_region_name}**.
 
-### Core Platform Capabilities & Tools Available:
-1. **Google X Project Bellwether**: Next-gen AI/ML landscape hazard forecasts (100m resolution, quarterly cadence, 1-year and 5-year absolute burn probabilities).
-2. **CAL FIRE Statutory FHSZ**: Regulatory Fire Hazard Severity Zones (Moderate, High, Very High) determining building codes (CBC Chapter 7A) and real estate disclosure.
-3. **Commercial Insurance Cat-Models (Verisk / Zesty.ai)**: Actuarial underwriting scores influencing policy non-renewals and California FAIR Plan enrollment.
-4. **Quantification of the Negative & Contagion**: Eric Saylors' 130ft radiant heat contagion model, measuring threatened structural value, saved value, and municipal mitigation ROI (S-Ratio).
-5. **Real-Time Environmental Telemetry**: NOAA HRRR wind plumes, CDEC/RAWS dead/live fuel moisture (DFM/LFMC), and NASA FIRMS VIIRS satellite thermal hotspots.
-6. **Building Hardening & Regulations**: California Department of Insurance (CDI) "Safer from Wildfires" (10 CCR § 2644.9) and IBHS Wildfire Prepared Home standards.
+### Data available through your tools (all real; cite source and time):
+1. **Bellwether** 1-year and 5-year probability of a 100 m cell burning (partner GeoTIFFs, San Mateo / Santa Cruz pilot area only).
+2. **CAL FIRE Fire Hazard Severity Zones** (SRA 2023, LRA 2025) from the official services.
+3. **Live conditions**: NOAA HRRR weather via Open-Meteo, National Weather Service alerts, CDEC RAWS fuel moisture.
+4. **Active fires**: CAL FIRE incidents, NIFC current perimeters, NASA FIRMS VIIRS detections (last 24 h).
+5. **Location context**: ESA WorldCover land cover, CAL FIRE historical perimeters, Microsoft building footprints, USGS 3DEP slope.
+No insurance scores, parcel values or property records are available; never invent them.
+If a tool fails or a source does not cover a place, say so instead of guessing.
 """
 
         if persona == "firefighter":
@@ -57,11 +58,11 @@ Active Target Region: **{active_region_name}**.
 - Target Audience: Fire Chiefs, Fire Marshals, Engine Captains, Emergency Operations Center (EOC).
 - Tone: Professional, tactical, concise, data-driven, prioritizing firefighter safety, structural protection, and asset defense.
 - Key Focus Areas:
-  * Real-time wind speed, gusts, and directional vector shifts (NOAA HRRR).
-  * 1-hr, 10-hr, 100-hr Dead Fuel Moisture (DFM) and Live Fuel Moisture (LFMC) Red Flag thresholds.
-  * 130-foot radiant heat propagation corridors: calculate threatened asset value vs saved property value (Quantification of the Negative / Saylors S-Ratio) to justify deployment and resource allocation.
-  * Topographic rate of spread (ROS) acceleration along steep canyon slopes (>20 degrees).
-  * Discrepancies where dynamic AI probability exceeds static CAL FIRE Moderate zones (tactical under-warning alert).
+  * Current wind, gusts, humidity and Red Flag Warnings (HRRR, NWS).
+  * 10-h fuel moisture at nearby RAWS stations.
+  * Active incidents, perimeters and satellite detections.
+  * Structures near a location (building footprints), slope and land cover.
+  * Where Bellwether's near-term probability and the FHSZ map disagree.
 """
         else:
             persona_prompt = """
@@ -79,7 +80,7 @@ Active Target Region: **{active_region_name}**.
         formatting_rules = """
 ### Formatting Guidelines:
 - Use clean Markdown with bullet points, bold highlights, and structured tables when comparing data.
-- Whenever citing data (winds, fuel moisture, probability, dollars saved), call the relevant tools or cite accurate numbers.
+- Whenever citing data (wind, fuel moisture, probabilities, fires), call the relevant tool and give its source and time.
 - Do not mention internal corporate partnership jargon like 'SBFire_SJSU-2026...'; focus squarely on the practical benefits of the web platform.
 - Always conclude with concrete, actionable recommendations for the user.
 """
@@ -96,6 +97,7 @@ Active Target Region: **{active_region_name}**.
         Conduct a multi-turn chat turn with autonomous tool calling.
         """
         system_prompt = self._build_system_prompt(persona, context)
+        self.tools.default_region = (context or {}).get("region", "san_bruno")
         full_messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
         for m in messages:
@@ -174,17 +176,17 @@ Active Target Region: **{active_region_name}**.
         """Return high-value pre-built prompt pills for instant query."""
         if persona == "firefighter":
             return [
-                "What is the 130ft radiant heat contagion risk for Crestmoor Canyon?",
-                "Fetch live NOAA wind vectors and CDEC fuel moisture for San Bruno.",
-                "Compare Bellwether 100m dynamic risk against CAL FIRE Moderate FHSZ.",
-                "Calculate threatened building value vs saved property ROI (Saylors S-Ratio).",
-                "Where are active thermal anomalies / hotspots detected by NASA VIIRS?"
+                "What are the current wind, humidity and fuel moisture in this region?",
+                "Are there active fires or satellite hotspots in California right now?",
+                "Where do Bellwether and the CAL FIRE FHSZ map disagree in this region?",
+                "How many structures are within 130 ft of 37.62, -122.43, and what is the FHSZ zone there?",
+                "Is there a Red Flag Warning in effect here?"
             ]
         else:
             return [
                 "How can I qualify for mandatory California insurance discounts?",
                 "What is the difference between Zone 0 (0-5ft) and Zone 1 defensible space?",
-                "Why did my insurance company non-renew my policy in the WUI?",
-                "How does Bellwether AI predict wildfire risk compared to CAL FIRE?",
+                "What fire hazard zone is my area in, and has it burned before?",
+                "How does Bellwether's forecast differ from the CAL FIRE hazard map?",
                 "What home hardening retrofits give the highest protection against embers?"
             ]
