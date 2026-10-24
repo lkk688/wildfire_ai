@@ -45,6 +45,10 @@ def main() -> None:
     ap.add_argument("--max-lag-days", type=int, default=365)
     ap.add_argument("--workers", type=int, default=10)
     ap.add_argument("--splits", nargs="+", default=["test", "val", "train"])
+    ap.add_argument("--train-sources", nargs="+", default=["train"],
+                    help="record splits pooled into the training set; post-fire recognition may also use the "
+                         "2015-18 fires ('excluded_pre2019'), which predate every val/test fire")
+    ap.add_argument("--out-tag", default="", help="suffix for output files, e.g. '_large'")
     args = ap.parse_args()
 
     df = load_residential()
@@ -56,15 +60,37 @@ def main() -> None:
 
     for split in args.splits:
         k = args.k_train if split == "train" else args.k_eval
-        g = df[df["split"] == split]
+        g = df[df["split"].isin(args.train_sources)] if split == "train" else df[df["split"] == split]
         parts = []
         for (e, dmg), gg in g.groupby(["event", "DAMAGE"]):
             parts.append(gg.sample(n=min(k, len(gg)), random_state=int(rng.integers(1 << 31))))
         smp = pd.concat(parts).reset_index(drop=True).assign(pilot_set="postfire")
         print(f"[*] {split}: {len(smp)} sampled from {smp['event'].nunique()} events", flush=True)
 
+        # resumable: every finished record (accepted or rejected) is appended to a progress file as it completes
+        prog_path = OUT / f"postfire_{split}{args.out_tag}.progress.jsonl"
+        done = {}
+        if prog_path.exists():
+            for line in prog_path.read_text().splitlines():
+                d = json.loads(line)
+                done[d["gid"]] = d
+        print(f"[*] {split}: {len(done)} already done (resume)", flush=True)
+        import threading
+        plock = threading.Lock()
+        prog = prog_path.open("a")
+
         def work(i):
             r = smp.iloc[i]
+            if r["GLOBALID"] in done:
+                d = done[r["GLOBALID"]]
+                return d.get("rec"), d.get("reject"), r["event"]
+            out = _work(r)
+            with plock:
+                prog.write(json.dumps({"gid": r["GLOBALID"], "rec": out[0], "reject": out[1]}) + "\n")
+                prog.flush()
+            return out
+
+        def _work(r):
             start = r["INCIDENTSTARTDATE_ISO"].date()
             post = fetch_postfire_crop_fast(float(r["lat"]), float(r["lon"]), start,
                                             POST_DIR / f"{r['GLOBALID']}.jpg", rel, max_lag_days=args.max_lag_days)
@@ -74,13 +100,14 @@ def main() -> None:
             pre = fetch_prefire_crop(float(r["lat"]), float(r["lon"]), start, IMG_DIR / f"{r['GLOBALID']}.jpg", rel,
                                      year_built=int(yb) if yb and 1800 <= yb <= 2026 else None)
             rec = to_record(r, pre.to_dict(), split=split)
+            rec["source_split"] = r["split"]
             rec["imagery_postfire"] = post.to_dict()
             return rec, None, r["event"]
 
         with ThreadPoolExecutor(max_workers=args.workers) as ex:
             res = list(ex.map(work, range(len(smp))))
         recs = [x for x, _, _ in res if x is not None]
-        with open(OUT / f"postfire_{split}.jsonl", "w") as f:
+        with open(OUT / f"postfire_{split}{args.out_tag}.jsonl", "w") as f:
             for rec in recs:
                 f.write(json.dumps(rec) + "\n")
         cov = defaultdict(lambda: [0, 0])
@@ -95,7 +122,7 @@ def main() -> None:
         lines += [f"| {e.replace(' | ', ' (')}) | {a}/{b} |" for e, (a, b) in sorted(cov.items(), key=lambda x: -x[1][1])]
         lines.append("")
         print(f"[OK] {split}: {len(recs)}/{len(smp)}", Counter(r for _, r, _ in res if r), flush=True)
-        (OUT / "postfire_summary.md").write_text("\n".join(lines) + "\n")
+        (OUT / f"postfire_summary{args.out_tag}.md").write_text("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

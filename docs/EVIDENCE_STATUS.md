@@ -194,6 +194,41 @@ run; no analysis rule changed.
 
 - *Limits.* Mapped perimeters lag the fire (Eaton's first mapped perimeter came about 5 h after ignition). ERA5 misses local gusts. Eaton is the weakest fire (.39). Scripts: `scripts/data/evac_perimeter_inventory.py`, `build_evac_replay.py`, `ms_building_cells.py`, `render_evac_maps.py`, `scripts/eval/evac_baselines.py`, `run_evac_vlm.py`.
 
+## 4e. Vision models from external datasets (2026-10-23; exploratory)
+
+**Datasets reviewed** (from arXiv 2610.18845, RSI4EO).
+- *BRIGHT* (building damage, 14 events): post-event imagery is SAR, so it does not transfer to our optical post-fire task. Its two wildfire events are Marshall 2021 (CO) and Lahaina 2023. The Marshall labels check out: 266 of 272 sampled destroyed pixels lie inside the MTBS perimeter.
+- *OpenEarthMap* (0.25–0.5 m, 8-class land cover): used for V2.
+- *Open-Canopy*, *HRSID*, *PASTIS*: not used.
+
+**V1: external test, Marshall Fire** (`scripts/data/build_marshall_external.py`, `scripts/eval/postfire_external_eval.py`).
+- 800 buildings (400 destroyed, 400 intact) with BRIGHT labels and verified Wayback optical imagery taken 113 days after the fire. Models were trained on California DINS only.
+
+| Model | Marshall AUROC |
+|---|---|
+| Qwen3.5-4B + LoRA | .983 [.963, .994] |
+| Same 4B base, untuned (same readout) | .986 |
+| Qwen3.5-9B + LoRA | .979 |
+| Frozen DINOv2 probe, post-only | .977 |
+
+- Generalisation outside California holds. The set is near the ceiling (contiguous burned subdivisions), so it does not separate the methods.
+
+**V1: larger in-domain training set** (`build_postfire_dataset.py --train-sources train excluded_pre2019 --k-train 150 --out-tag _large`). In progress. Only about 22% of sampled buildings have a Wayback capture within a year after their fire.
+
+**V2: defensible space seen from above** (`scripts/train/train_oem_segmenter.py`, `scripts/eval/defensible_space_features.py`, `defensible_space_eval.py`).
+- *Segmenter.* DINOv2-base with a conv decoder, trained on OpenEarthMap (2,303 train images). Validation mIoU is .680 on 384 images; IoU is .81 for buildings and .72 for trees.
+- *Features.* Applied to 6,249 verified pre-fire crops. Class shares are computed in rings 0–2, 2–10, 10–30 and 30–75 m from the home's segmented footprint, plus the distance to the nearest building and the footprint area.
+
+| Pair accuracy (same-fire neighbours) | Building metadata | Defensible space | Both |
+|---|---|---|---|
+| Main test, 403 pairs | .599 | .556 | .598 |
+| XL, 628 pairs | .565 | .521 | .567 |
+| Replication, 289 pairs | .595 | .502 | .578 |
+
+- *T1 (single buildings).* Inconsistent: .558 on the diagnostic set, .474 at natural prevalence, .640 on replication.
+- *Univariate effects across 1,031 test pairs.* They are real but small. In 53.6% of pairs the destroyed home has more tree cover within 2–10 m (p = .02). In only 46.2% of pairs is its nearest neighbour farther away, i.e. destroyed homes tend to have closer neighbours (p = .02). No vegetation-ring measure reaches p < .01.
+- *Conclusion.* An explicit segmenter that measures vegetation and building spacing does not recover building-level signal beyond metadata under exposure control. This supports the paper's claim that the limit lies in what pre-fire overhead imagery contains, not in VLM perception.
+
 ## 5. Rules going forward
 
 1. The 50 legacy cases and their 10 events are **dev only**. Never report them as test results.
