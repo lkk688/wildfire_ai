@@ -59,3 +59,6 @@ output/
 data/*.parquet
 backend/static/slope_*.png
 backend/static/ndvi_*.png
+
+# Local-only working files
+/paper/
