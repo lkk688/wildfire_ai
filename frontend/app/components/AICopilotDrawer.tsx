@@ -33,6 +33,92 @@ interface Message {
   timestamp: string;
 }
 
+// Minimal Markdown for copilot answers (headings, lists, tables, quotes, rules, **bold**, *italic*, `code`).
+// Builds React nodes; no HTML from the model is injected.
+function inline(text: string, key: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const re = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const t = m[0];
+    if (t.startsWith('**')) out.push(<strong key={`${key}-${i++}`} className="font-bold text-slate-100">{t.slice(2, -2)}</strong>);
+    else if (t.startsWith('`')) out.push(<code key={`${key}-${i++}`} className="px-1 rounded bg-slate-800 text-orange-200">{t.slice(1, -1)}</code>);
+    else out.push(<em key={`${key}-${i++}`}>{t.slice(1, -1)}</em>);
+    last = m.index + t.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+function renderMarkdown(src: string): React.ReactNode[] {
+  const lines = src.split('\n');
+  const nodes: React.ReactNode[] = [];
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx];
+    const k = `l${idx}`;
+    if (line.trim().startsWith('|')) {
+      const rows: string[][] = [];
+      while (idx < lines.length && lines[idx].trim().startsWith('|')) {
+        const cells = lines[idx].trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+        if (!cells.every((c) => /^:?-{2,}:?$/.test(c))) rows.push(cells);
+        idx++;
+      }
+      idx--;
+      nodes.push(
+        <div key={k} className="overflow-x-auto my-1">
+          <table className="w-full text-[10.5px] border-collapse">
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={ri} className={ri === 0 ? 'text-slate-400' : 'text-slate-200 border-t border-slate-800'}>
+                  {r.map((c, ci) => (
+                    <td key={ci} className="px-1.5 py-0.5 align-top">{inline(c, `${k}-${ri}-${ci}`)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+    const h = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (h) {
+      nodes.push(
+        h[1].length <= 2 ? (
+          <h3 key={k} className="font-extrabold text-sm text-slate-100 mt-2.5 mb-1">{inline(h[2], k)}</h3>
+        ) : (
+          <h4 key={k} className="font-bold text-sm text-orange-400 mt-2 mb-1">{inline(h[2], k)}</h4>
+        ),
+      );
+      continue;
+    }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
+      nodes.push(<hr key={k} className="border-slate-800 my-1.5" />);
+      continue;
+    }
+    const li = /^\s*(?:[*-]|\d+\.)\s+(.*)$/.exec(line);
+    if (li) {
+      nodes.push(
+        <div key={k} className="flex items-start gap-1.5 ml-2 text-[11px] text-slate-300">
+          <span className="text-orange-400 mt-0.5">•</span>
+          <span>{inline(li[1], k)}</span>
+        </div>,
+      );
+      continue;
+    }
+    if (line.startsWith('> ')) {
+      nodes.push(<p key={k} className="text-[11px] leading-relaxed text-amber-200/90 border-l-2 border-amber-500/50 pl-2">{inline(line.slice(2), k)}</p>);
+      continue;
+    }
+    if (!line.trim()) continue;
+    nodes.push(<p key={k} className="text-[11px] leading-relaxed text-slate-300">{inline(line, k)}</p>);
+  }
+  return nodes;
+}
+
 export default function AICopilotDrawer({ selectedRegion }: AICopilotDrawerProps) {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [persona, setPersona] = useState<'resident' | 'firefighter'>('resident');
@@ -295,23 +381,7 @@ I do not have insurance scores or property records.`,
 
                   {/* Message Content */}
                   <div className="prose prose-invert prose-xs max-w-none space-y-1.5 text-xs text-slate-200">
-                    {m.content.split('\n').map((line, idx) => {
-                      if (line.startsWith('### ')) {
-                        return <h4 key={idx} className="font-bold text-sm text-orange-400 mt-2 mb-1">{line.replace('### ', '')}</h4>;
-                      }
-                      if (line.startsWith('## ')) {
-                        return <h3 key={idx} className="font-extrabold text-sm text-slate-100 mt-2.5 mb-1">{line.replace('## ', '')}</h3>;
-                      }
-                      if (line.startsWith('* ') || line.startsWith('- ')) {
-                        return (
-                          <div key={idx} className="flex items-start gap-1.5 ml-2 text-[11px] text-slate-300">
-                            <span className="text-orange-400 mt-1">•</span>
-                            <span>{line.replace(/^(\*|-)\s+/, '')}</span>
-                          </div>
-                        );
-                      }
-                      return <p key={idx} className="text-[11px] leading-relaxed text-slate-300">{line}</p>;
-                    })}
+                    {renderMarkdown(m.content)}
                   </div>
 
                   <div className="text-[9px] text-slate-500 text-right">{m.timestamp}</div>

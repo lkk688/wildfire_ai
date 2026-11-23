@@ -141,7 +141,7 @@ export default function Sidebar({
         </button>
         {onSwitchToVision && (
           <button onClick={onSwitchToVision} className="w-full mt-2 py-2.5 px-3 rounded-xl bg-gradient-to-r from-purple-950/60 via-slate-900 to-indigo-950/60 border border-purple-500/40 text-xs font-bold text-purple-200 flex items-center justify-center gap-2">
-            <Eye className="w-4 h-4 text-purple-400" /> VLM benchmark (dev set)
+            <Eye className="w-4 h-4 text-purple-400" /> VLM evaluation (held-out fires)
           </button>
         )}
       </div>

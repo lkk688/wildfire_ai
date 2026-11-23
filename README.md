@@ -4,14 +4,13 @@ Research code for evaluating whether vision-language models (VLMs) can tell, fro
 **will be** destroyed in a wildfire (pre-fire) and which **were** destroyed (post-fire), against real outcomes
 from CAL FIRE damage inspections (DINS).
 
-> **Read this first.** This repository contains two kinds of code:
->
-> 1. **The research pipeline** (`scripts/`, `src/vlm_benchmark/imagery_provenance.py`, `paper/`). Every number it
->    produces is computed from real records and real model outputs. What is and is not established is tracked
->    in [`docs/EVIDENCE_STATUS.md`](docs/EVIDENCE_STATUS.md), the single source of truth for results.
-> 2. **A legacy demo application** (`backend/`, `frontend/`, and parts of `src/`), built before 2026-10-19.
->    **Much of its displayed content is synthetic, hard-coded, or generated from the true outcome label.** It must not
->    be used for decisions or presented as results. See [Legacy demo application](#legacy-demo-application) below.
+The repository has two parts:
+
+1. **The research pipeline** (`scripts/`, `src/vlm_benchmark/imagery_provenance.py`, `paper/`). Every number it
+   produces is computed from real records and real model outputs. What is and is not established is tracked in
+   [`docs/EVIDENCE_STATUS.md`](docs/EVIDENCE_STATUS.md), the single source of truth for results.
+2. **A web demo** (`backend/`, `frontend/`) with two views: a risk map on live public data, and a browser for the
+   held-out evaluation behind the paper. See [Web demo](#web-demo).
 
 ## Research pipeline
 
@@ -54,6 +53,14 @@ release date.
   See `scripts/data/evac_perimeter_inventory.py`, `build_evac_replay.py`, `ms_building_cells.py`,
   `render_evac_maps.py`, `scripts/eval/evac_baselines.py` and `run_evac_vlm.py`.
 
+**External datasets (2026-10-23).**
+- *Out-of-state post-fire test (2021 Marshall Fire, Colorado):* BRIGHT building labels with verified Wayback
+  imagery. See `scripts/data/build_marshall_external.py` and `scripts/eval/postfire_external_eval.py`.
+- *Defensible-space features:* an OpenEarthMap segmenter (DINOv2-base) measures vegetation and buildings in rings
+  around each home. See `scripts/data/prepare_oem.py`, `scripts/train/train_oem_segmenter.py` and
+  `scripts/eval/defensible_space_{features,eval}.py`.
+- Results for both are in `docs/EVIDENCE_STATUS.md` §4e.
+
 `output/` is git-ignored. API keys are read from the environment (`CLAUDE_API_KEY` / `ANTHROPIC_API_KEY`,
 `QWEN_REMOTE_KEY` with `TB_REMOTE_QWEN_URL`, `MINIMAX_API_KEY`) and are never stored in the repository.
 
@@ -80,42 +87,98 @@ release date.
 | ERA5 via Open-Meteo | CC BY 4.0 |
 | Bellwether rasters | Shared by the partner; not redistributed |
 
-## Legacy demo application
+## Web demo
 
-`backend/` (FastAPI) and `frontend/` (Next.js) implement a GIS dashboard, a VLM "workstation" and an AI copilot.
-An audit on 2026-10-22 found that, in their current state, many displayed values are not real:
+[![Demo video (3 min, 22 Nov 2026)](docs/assets/demo_2026-11-22_vlm.jpg)](docs/assets/demo_2026-11-22.mp4)
 
-- **Label-conditioned values (generated from the true DINS outcome).** These are shown as model outputs:
-  - "Bellwether" probabilities: 0.0342 if destroyed, else 0.0125 (5-year 0.158 / 0.058)
-  - the Zone 0 and defensible-space status
-  - the insurance and Verisk figures
-  - the academic-simulation numbers
-  - the expert "forensic" diagnoses
-  - the `structured_assessment` returned by `/api/vlm/predict`, even when the model call fails
-  - the RLVR / SFT / "WildfireReason" benchmark predictions (`rlvr_post_training_runner.py`)
-  - the SFT "gold" reasoning traces (`cot_dataset_generator.py`)
+**[Watch the 3-minute walkthrough](docs/assets/demo_2026-11-22.mp4)** (recorded 22 Nov 2026 from the running app;
+captions only, no audio).
 
-  Real Bellwether rasters exist only for the partner pilot area (`/api/layers/bellwether`, `/api/risk-factors`).
-- **Synthetic data labelled as live:**
-  - the CAL FIRE incidents, including fictitious "active" incidents
-  - FIRMS hotspots, CDEC/RAWS fuel moisture, HRRR weather
-  - the "USGS 3DEP LiDAR" slope (a sine pattern)
-  - the "Microsoft Building Footprints" layer (an 8×8 grid with fake APNs)
-  - the FHSZ overlay (concentric circles)
-  - the corridor burn probability (a constant)
-  - the land cover (chosen by hashing the coordinates)
+**Rule: nothing is mocked.** Every value on screen is either fetched live from a public service or read from a stored
+output of this project's evaluation. If a source is down or has no data, the UI says so; it never shows a placeholder.
 
-  The copilot's tools return these same values.
-- **Hard-coded results in the UI:** the "Ours" tables (82% assimilation, 94% RLVR), the fallback values (e.g. '3.42%',
-  '$3,250,000') and the venue badges. The "Commercial SOTA" and "NDWS" benchmark rows were constants and a hand-drawn
-  ellipse.
-- **The 50-case development set is confounded:** all 25 survived cases come from one fire, and its evaluator prompt
-  includes the fire name. Its scores (text only, no image) say nothing about vision.
-- **`src/README.md` and `src/walkthrough.md`** describe this demo and have not been re-audited line by line.
+### View 1: risk map (live data)
 
-Until each component is rebuilt on real outputs, treat the whole demo as an interface mock-up. The provider-switching
-endpoint is disabled unless `WILDFIRE_DEMO_ALLOW_PROVIDER_SWITCH=1` is set, and it never accepts a custom `base_url`
-from the network.
+![Risk map](docs/assets/demo_2026-11-22_map.jpg)
+
+Three regions: San Bruno, San Jose foothills and the Santa Cruz Mountains. **Data sources & live status** checks
+every source when it opens.
+
+| Layer / panel | Source (fetched live unless noted) |
+|---|---|
+| Bellwether 1-year / 5-year hazard, risk drivers | Partner GeoTIFFs (local files, pilot area only: about 55% of cells valid; San Jose is not covered) |
+| Current perimeters, CAL FIRE incidents | NIFC WFIGS; incidents.fire.ca.gov |
+| Historic perimeters (1950+) | CAL FIRE FRAP |
+| Satellite hotspots (24 h) | NASA FIRMS VIIRS public CSVs (S-NPP, NOAA-20, NOAA-21) |
+| Fuel moisture | CDEC RAWS, 10-h fuel sticks, hourly |
+| Weather, wind field, alerts | NOAA HRRR via Open-Meteo; NWS alerts |
+| Terrain slope | USGS 3DEP DEM, slope computed on request |
+| Vegetation (NDVI) | Sentinel-2 via Esri, one dated scene with ≤10% cloud |
+| Fire Hazard Severity Zones | CAL FIRE FHSZ (SRA 2023, LRA 2025) |
+| Land cover | ESA WorldCover 2021 |
+| Building footprints | Microsoft US Building Footprints (local file) |
+
+- **Point summary.** Click anywhere on the map to combine all sources at that point.
+- **Bellwether vs FHSZ.** Compares the partner model with the state hazard map, cell by cell, where Bellwether
+  has values.
+- **AI copilot.** Answers with the same live tools and is instructed not to invent values. It needs an LLM key on
+  the backend (MiniMax by default).
+
+### View 2: VLM evaluation (held-out fires)
+
+The view browses the **2024–25 test fires** used in the paper:
+
+- **Post-fire (T3):** 1,246 buildings, with pre- and post-fire Wayback crops whose capture dates are verified.
+- **Pre-fire pairs (T2):** 403 same-fire neighbour pairs, shown in the same A/B order the models saw. The outcome
+  stays hidden until you click **Reveal**.
+
+For each case you see:
+
+- the CAL FIRE DINS label;
+- every model's **stored output**: Claude Sonnet / Haiku 5.5, Qwen3.8-27B, Qwen3.5-4B zero-shot, Qwen3.5-4B/9B +
+  LoRA and the DINOv2 linear probe;
+- the model's cited evidence.
+
+The scoreboard is computed from the same per-case outputs. Its figures match `paper/numbers.tex`: T3 AUROC .892
+for Sonnet, .892 / .903 for the LoRA models and .881 for DINOv2; T2 pair accuracy .571–.620.
+
+**Run this case now** re-sends the case to Claude (or to Qwen, if configured), using the exact research prompt and
+images. It needs `CLAUDE_API_KEY` on the backend.
+
+**Privacy.** Street addresses, APNs and assessed values are not sent to the browser, and coordinates are rounded to
+about 100 m.
+
+### What changed (22 Oct – 22 Nov 2026)
+
+An audit on 2026-10-22 found that the old demo showed many values that were synthetic or generated from the true
+outcome label. All of these have been removed or replaced with live sources:
+
+- fake incidents, hotspots, weather, slope, footprints and FHSZ;
+- "Bellwether" probabilities, insurance figures, expert diagnoses and RLVR results.
+
+The VLM view no longer shows the 50-case development set. It was confounded, and its stored runs used a prompt that
+stated the same made-up weather for every case. The corresponding endpoints (`/api/vlm/benchmark/results`,
+`/metrics`, `/api/vlm/predict`) now return HTTP 410 with the reason. The screenshots of the old demo were deleted
+from `docs/assets/` and `src/output/`; earlier write-ups are in [`docs/archive/`](docs/archive/).
+
+### Running the demo
+
+```bash
+# backend (repo root); Python 3 with fastapi uvicorn requests numpy pandas pyarrow rasterio scipy shapely pillow scikit-learn
+python3 scripts/demo/export_heldout_cases.py     # once: builds output/demo/heldout_cases.json from output/experiments/
+export CLAUDE_API_KEY=...                        # optional: "Run this case now"
+export MINIMAX_API_KEY=...                       # optional: AI copilot
+python3 -m uvicorn backend.main:app --port 8000
+
+# frontend
+cd frontend && npm install && npm run build && npm run start   # http://localhost:3000
+# NEXT_PUBLIC_API_BASE=http://host:8000 at build time to use another backend
+```
+
+The VLM view needs the local research outputs (`output/`, git-ignored) and the Wayback crops under
+`/data/wildfire_benchmark_data/`. The map view needs only internet access, plus the Bellwether rasters for the
+Bellwether layer. Deep links:
+`/?region=santa_cruz&layers=perimeters,fhsz`, `/?mode=vision&task=t2&case=p0042`.
 
 ## Quick start (research pipeline)
 

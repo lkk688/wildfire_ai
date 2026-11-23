@@ -101,7 +101,7 @@ export default function Home() {
           }`}
         >
           <Eye className="w-3.5 h-3.5 text-purple-300" />
-          <span>VLM Benchmark (dev set)</span>
+          <span>VLM Evaluation (held-out fires)</span>
         </button>
       </div>
 

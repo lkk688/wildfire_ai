@@ -78,6 +78,10 @@ export default function MapView({
     const imagery = L.tileLayer(esri('World_Imagery'), { maxZoom: 19, attribution: `Esri, Maxar, Earthstar Geographics | ${data}` });
     const topo = L.tileLayer(esri('World_Topo_Map'), { maxZoom: 19, attribution: `Esri, USGS, NOAA | ${data}` });
     dark.addTo(m);
+    if (!initialView) {
+      const [w, so, e, n] = region.bbox;
+      m.fitBounds([[so, w], [n, e]], { padding: [20, 20] }); // whole region box in view
+    }
     L.control.layers({ 'Dark gray': dark, 'Satellite imagery': imagery, Topographic: topo }, {}, { position: 'topleft' }).addTo(m);
     L.control.zoom({ position: 'bottomleft' }).addTo(m);
     L.control.scale({ position: 'bottomleft', imperial: true }).addTo(m);
@@ -96,7 +100,8 @@ export default function MapView({
       return;
     }
     firstRegion.current = false;
-    map.flyTo(region.center, 13, { duration: 1.2 });
+    const [w, so, e, n] = region.bbox;
+    map.flyToBounds([[so, w], [n, e]], { padding: [20, 20], duration: 1.2 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, selectedRegion]);
 
@@ -288,7 +293,7 @@ export default function MapView({
         setLayer(
           'fhsz',
           L.geoJSON(d.zones, {
-            style: (f) => ({ color: f?.properties?.color, weight: 1, fillColor: f?.properties?.color, fillOpacity: 0.28 }),
+            style: (f) => ({ color: f?.properties?.color, weight: 1, fillColor: f?.properties?.color, fillOpacity: 0.18 }),
             onEachFeature: (f, l) =>
               l.bindTooltip(`<div class="text-xs"><b>FHSZ ${esc(f.properties.zone)}</b><br/>${esc(f.properties.source)}</div>`, { sticky: true }),
           }),

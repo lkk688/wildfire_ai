@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend import live_sources as live
+from backend import heldout
 from backend.services import GISDataService, STATIC_DIR, REGION_BOUNDS, parse_bbox
 from backend.ai import WildfireAIAgent, AIConfig
 from src.academic_models import (
@@ -427,6 +428,7 @@ from starlette.responses import FileResponse
 from src.vlm_benchmark.service import VLMBenchmarkService
 
 vlm_service = VLMBenchmarkService()
+LEGACY_DEVSET_RUNS = 'Removed 2026-11-22: the stored 50-case dev-set runs used a prompt that stated the same made-up weather for every case (Red Flag Warning, gusts 25-35 mph, DFM < 6%), post-fire DINS attributes and the fire name. Use /api/heldout/* (held-out fires, research prompt, verified imagery).'
 
 
 class VLMPredictRequest(BaseModel):
@@ -467,20 +469,14 @@ def get_vlm_benchmark_cases():
 
 @app.get("/api/vlm/benchmark/results")
 def get_vlm_benchmark_results():
-    """Stored text-only model outputs for the 50 dev-set cases."""
-    try:
-        return vlm_service.get_all_results()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """Retired (see detail)."""
+    raise HTTPException(status_code=410, detail=LEGACY_DEVSET_RUNS)
 
 
 @app.get("/api/vlm/benchmark/metrics")
 def get_vlm_benchmark_metrics():
-    """Dev-set metrics of the stored text-only runs (confounded set; not a held-out result)."""
-    try:
-        return vlm_service.get_metrics_scoreboard()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """Retired (see detail)."""
+    raise HTTPException(status_code=410, detail=LEGACY_DEVSET_RUNS)
 
 
 @app.get("/api/vlm/benchmark/image/{case_id}")
@@ -511,24 +507,59 @@ def get_vlm_research_results():
 
 @app.post("/api/vlm/predict")
 def run_vlm_live_predict(req: VLMPredictRequest):
-    """Execute live on-demand VLM/LLM fire reasoning prediction."""
+    """Retired (see detail); use POST /api/heldout/predict."""
+    raise HTTPException(status_code=410, detail=LEGACY_DEVSET_RUNS)
+
+
+# ============================================================================
+# Held-out evaluation browser (VLM view)
+# ============================================================================
+
+class HeldoutPredictRequest(BaseModel):
+    task: str  # t3 (post-fire) | t2 (pre-fire pairs)
+    case_id: str  # global_id for t3, pair_id for t2
+    model: str = "claude-sonnet-5-5"
+    condition: str = "postfire_image"  # t3: postfire_image | prepost_image; t2: image | meta
+
+
+@app.get("/api/heldout/summary")
+def heldout_summary():
+    """Models, per-model metrics computed from the stored per-case outputs, events and live-model availability."""
     try:
-        case_data = req.custom_attributes or {}
-        if req.case_id:
-            catalog = vlm_service.get_catalog()
-            matching = [item for item in catalog.get("items", []) if str(item["id"]) == str(req.case_id)]
-            if matching:
-                merged = dict(matching[0])
-                merged.update(case_data)
-                case_data = merged
+        return heldout.summary()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
-        if not case_data:
-            raise HTTPException(status_code=400, detail="Either valid case_id or custom_attributes must be provided")
 
-        result = vlm_service.run_live_prediction(model_name=req.model, case_data=case_data)
-        return result
-    except HTTPException:
-        raise
+@app.get("/api/heldout/cases")
+def heldout_cases(task: str = Query("t3", description="t3 (post-fire) | t2 (pre-fire pairs)")):
+    """All held-out cases of a task with stored per-model outputs (no addresses or APNs)."""
+    try:
+        return heldout.cases(task)
+    except KeyError:
+        raise HTTPException(status_code=400, detail="task must be t3 or t2")
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/api/heldout/image/{global_id}")
+def heldout_image(global_id: str, epoch: str = Query("pre", description="pre | post")):
+    """Verified Esri Wayback crop of a held-out building (capture dates in /api/heldout/cases)."""
+    p = heldout.image_path(global_id, epoch)
+    if p is None:
+        raise HTTPException(status_code=404, detail="image not found")
+    return FileResponse(str(p), media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.post("/api/heldout/predict")
+def heldout_predict(req: HeldoutPredictRequest):
+    """Re-run one held-out case now: same research prompt and same verified images as the stored run."""
+    try:
+        return heldout.live_predict(req.task, req.case_id, req.model, req.condition)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="case not found")
+    except (ValueError, SystemExit) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
