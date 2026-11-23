@@ -93,7 +93,7 @@ export const LAYER_LEGENDS: Record<string, LegendItem> = {
   wind: {
     id: 'wind',
     title: 'Wind at the slider hour (streaks flow downwind)',
-    note: 'NOAA HRRR model, 10 m above ground',
+    note: 'NOAA HRRR / NBM models, 10 m above ground',
     swatches: WIND_CLASSES.map((c) => ({ label: c.label, color: c.color, shape: 'line' as const })),
   },
   alerts: {

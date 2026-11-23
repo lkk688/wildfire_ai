@@ -88,7 +88,7 @@ function Conditions({ region, layers, setLayers }: { region: string; layers: Lay
       </div>
       {err && (
         <div className="text-rose-400 text-[11px]">
-          {/timed out|ReadTimeout/i.test(err) ? 'The weather feed (Open-Meteo) is not answering right now.' : `Weather source unavailable: ${err}`}{' '}
+          {/timed out|ReadTimeout/i.test(err) ? 'The weather source is not answering right now.' : `Weather source unavailable: ${err}`}{' '}
           Retrying every minute. <button onClick={() => setAttempt((a) => a + 1)} className="underline cursor-pointer">Retry now</button>
         </div>
       )}
@@ -101,8 +101,8 @@ function Conditions({ region, layers, setLayers }: { region: string; layers: Lay
             <div><div className="text-[10px] text-slate-500">Wind from</div><b>{w.wind_direction_cardinal} {w.wind_speed_mph}</b> <span className="text-slate-500">gust {w.wind_gust_mph} mph</span></div>
           </div>
           <div className="text-[10px] text-slate-500 leading-snug">
-            Source: <b className="text-slate-400">NOAA HRRR</b> 3 km weather model (via Open-Meteo), grid cell {w.grid_lat?.toFixed(3)}, {w.grid_lon?.toFixed(3)}, valid {localTime(w.valid_time_utc)}.
-            {w.stale && <span className="text-amber-300"> Open-Meteo is not answering; these values were fetched {localTime(w.fetched_utc)}. Retrying.</span>}
+            Source: <b className="text-slate-400">NOAA HRRR</b> 3 km weather model{w.model_run_utc ? `, run of ${localTime(w.model_run_utc)}, from NOAA open data` : ' (via Open-Meteo)'}, at {w.grid_lat?.toFixed(3)}, {w.grid_lon?.toFixed(3)}, valid {localTime(w.valid_time_utc)}.
+            {w.stale && <span className="text-amber-300"> The source is not answering; these values were fetched {localTime(w.fetched_utc)}. Retrying.</span>}
             {!layers.wind && <> <button onClick={() => show('wind')} className="text-blue-300 underline cursor-pointer">Show wind on map</button></>}
           </div>
           {w.alerts?.length ? (
@@ -185,10 +185,10 @@ export default function Sidebar({
 
         <div id="weather-panel" className="space-y-2">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            <CloudSun className="w-4 h-4 text-sky-400" /> Weather: past 24 h + forecast
+            <CloudSun className="w-4 h-4 text-sky-400" /> Weather: past day + 10-day forecast
           </div>
           <p className="text-[11px] text-slate-400 -mt-1 leading-snug">
-            NOAA HRRR model, hourly, for the whole map. Pick the hour on the time slider at the bottom of the map.
+            NOAA HRRR (3 km, hourly) for the past day and next 48 h, then the National Blend of Models to about 10 days. Pick the hour on the time slider below the map.
           </p>
           <div className="grid grid-cols-4 gap-1.5">
             {(['none', ...WX_ORDER] as const).map((k) => (

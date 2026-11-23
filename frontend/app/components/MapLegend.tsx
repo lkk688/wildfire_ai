@@ -44,7 +44,7 @@ export default function MapLegend({ activeLayer, layers, layerStatus, wxField }:
               <div className="text-[11px] font-semibold text-slate-100 leading-tight">
                 {WX_VARS[wxField].label}{WX_VARS[wxField].unit ? ` (${WX_VARS[wxField].unit})` : ''} at the slider hour
               </div>
-              <div className="text-[10px] text-slate-400 leading-tight">NOAA HRRR · {WX_VARS[wxField].note}</div>
+              <div className="text-[10px] text-slate-400 leading-tight">NOAA HRRR / NBM · {WX_VARS[wxField].note}</div>
               <div className="mt-1 h-2.5 rounded" style={{ background: gradientCss(wxField) }} />
               <div className="relative h-3 text-[9px] text-slate-400">
                 {WX_VARS[wxField].ticks.map((t) => (

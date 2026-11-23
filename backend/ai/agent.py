@@ -46,7 +46,7 @@ Active Target Region: **{active_region_name}**.
 1. **Bellwether** 1-year and 5-year probability of a 100 m cell burning (partner GeoTIFFs, San Mateo / Santa Cruz pilot area only).
 2. **USDA Wildfire Risk to Communities** annual burn probability (FSim, 30 m, landscape as of end-2020; national coverage). Older and coarser than Bellwether, but public and available everywhere.
 3. **CAL FIRE Fire Hazard Severity Zones** (SRA 2023, LRA 2025) from the official services.
-4. **Live conditions**: NOAA HRRR weather via Open-Meteo, National Weather Service alerts, CDEC RAWS fuel moisture.
+4. **Live conditions**: NOAA HRRR weather (NOAA open data on AWS), National Weather Service alerts, CDEC RAWS fuel moisture.
 5. **Active fires**: CAL FIRE incidents, NIFC current perimeters, NASA FIRMS VIIRS detections (last 24 h).
 6. **Location context**: ESA WorldCover land cover, CAL FIRE historical perimeters, Microsoft building footprints, USGS 3DEP slope.
 No insurance scores, parcel values or property records are available; never invent them.

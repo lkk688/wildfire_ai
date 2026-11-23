@@ -95,7 +95,7 @@ export default function MapView({
     // Keyless Esri basemaps (the CARTO tiles used before now require an API key)
     const esri = (svc: string) => `https://server.arcgisonline.com/ArcGIS/rest/services/${svc}/MapServer/tile/{z}/{y}/{x}`;
     const data =
-      'Bellwether (X), NIFC, CAL FIRE, NASA FIRMS, CDEC, NOAA HRRR/Open-Meteo, NOAA NWS, USGS 3DEP, USDA Forest Service WRC, Copernicus Sentinel-2/Esri, ESA WorldCover, Microsoft Building Footprints';
+      'Bellwether (X), NIFC, CAL FIRE, NASA FIRMS, CDEC, NOAA HRRR & NBM (NOAA Open Data on AWS), NOAA NWS, USGS 3DEP, USDA Forest Service WRC, Copernicus Sentinel-2/Esri, ESA WorldCover, Microsoft Building Footprints';
     const dark = L.layerGroup([
       L.tileLayer(esri('Canvas/World_Dark_Gray_Base'), { maxZoom: 19, maxNativeZoom: 16, attribution: `Esri, HERE, Garmin, OSM | ${data}` }),
       L.tileLayer(esri('Canvas/World_Dark_Gray_Reference'), { maxZoom: 19, maxNativeZoom: 16 }),
@@ -329,7 +329,7 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.fhsz, selectedRegion]);
 
-  // ---------------------------------------------------------------- Hourly HRRR weather (time slider)
+  // ---------------------------------------------------------------- NOAA HRRR + NBM weather (time slider)
   const wxOn = layers.wind || wxField !== 'none';
   const hourNow = () => Math.floor(Date.now() / 3600000);
   const hourRef = useRef<number>(wxHour ?? hourNow());
@@ -355,13 +355,13 @@ export default function MapView({
   useEffect(() => {
     const upd = () => {
       const st = wxStore.status();
-      const base = `NOAA HRRR, hourly; ${st.tiles} tile${st.tiles === 1 ? '' : 's'} at ${st.step}° spacing${st.fromCache ? `, ${st.fromCache} from cache` : ''}`;
+      const base = `NOAA HRRR (hourly, 48 h) then NBM (to ~10 days); ${st.tiles} tile${st.tiles === 1 ? '' : 's'} at ${st.step}° spacing${st.fromCache ? `, ${st.fromCache} from cache` : ''}`;
       const s: LayerState = st.loading && !st.tiles
         ? { state: 'loading' }
         : st.failed && !st.tiles
-          ? { state: 'error', detail: `Weather source not answering (${st.error}); retrying every minute` }
-          : st.stale || st.failed
-            ? { state: 'info', detail: `${base}. Open-Meteo is not answering for part of the view; showing the last good values${st.fetchedAt ? ` (from ${new Date(st.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })})` : ''}` }
+          ? { state: 'error', detail: `Weather not available (${st.error}); retrying every minute` }
+          : st.failed
+            ? { state: 'info', detail: `${base}. ${st.failed} tile${st.failed > 1 ? 's' : ''} did not load (${st.error}); retrying` }
             : { state: 'ok', detail: `${base}. Pick the hour on the time slider; hover the map for values.` };
       if (layers.wind) status('wind', s);
       if (wxField !== 'none') status('wxfield', s);

@@ -8,7 +8,8 @@ Sources (all public, no API key):
   CAL FIRE active incidents ................ incidents.fire.ca.gov/umbraco/api/IncidentApi/GeoJsonList
   NASA FIRMS VIIRS 375 m (S-NPP, NOAA-20, NOAA-21), last 24 h ... firms.modaps.eosdis.nasa.gov/data/active_fire/
   CDEC RAWS stations, sensor 11 (10-h fuel stick moisture) ... cdec.water.ca.gov
-  NOAA HRRR via Open-Meteo (current conditions, wind grid) ... api.open-meteo.com (models=gfs_hrrr)
+  NOAA HRRR via Open-Meteo (current conditions outside California, legacy wind grid) ... api.open-meteo.com (models=gfs_hrrr)
+  (the weather layers and California conditions come from NOAA's AWS buckets: see noaa_grid.py)
   NWS active alerts (Red Flag, wind, flood, ...) and zone shapes ... api.weather.gov
   USGS 3DEP elevation (slope computed here) ... elevation.nationalmap.gov 3DEPElevation ImageServer
   Sentinel-2 NDVI (Esri Sentinel-2 Views, one dated scene) ... sentinel.arcgis.com Sentinel2 ImageServer
@@ -711,9 +712,13 @@ SOURCES = [
     {"id": "cdec_raws_fuel_moisture", "name": "RAWS fuel moisture and weather stations", "provider": "California Data Exchange Center (CDEC)",
      "access": "CDEC JSON data servlet", "resolution": "Stations", "cadence": "Hourly",
      "description": "10-h fuel stick moisture (sensor 11), air temperature, humidity and wind at RAWS stations."},
-    {"id": "noaa_hrrr_open_meteo", "name": "Current weather and wind", "provider": "NOAA HRRR via Open-Meteo",
-     "access": "Open-Meteo forecast API (models=gfs_hrrr)", "resolution": "3 km model; sampled at 0.03-2 deg", "cadence": "Hourly; past 24 h to about +46 h",
-     "description": "Hourly temperature, humidity, wind, gusts, precipitation and cloud cover for the past 24 h and the forecast ahead (about 2 days), on map tiles that follow the view (0.03-2 deg spacing by zoom); drives the weather layers and the time slider. Cached per point on the server."},
+    {"id": "noaa_models_aws", "name": "Weather: temperature, humidity, wind, rain, cloud", "provider": "NOAA HRRR and National Blend of Models (NBM)",
+     "access": "NOAA Open Data on AWS (buckets noaa-hrrr-bdp-pds and noaa-nbm-grib2-pds); only the needed GRIB2 fields, via the .idx byte ranges",
+     "resolution": "HRRR 3 km, NBM 2.5 km; stored on a 0.03 deg grid over California", "cadence": "HRRR hourly runs, NBM 4 runs a day; past 24 h to about 10 days ahead",
+     "description": "Hourly temperature, humidity, wind, gusts, precipitation and cloud cover: HRRR for the past 24 h and the next 48 h, NBM after that (3- to 6-hourly, to about 10 days). Downloaded on the server as each model run arrives; drives the weather layers, the time slider and Current conditions."},
+    {"id": "noaa_hrrr_open_meteo", "name": "Current conditions outside California", "provider": "NOAA HRRR via Open-Meteo",
+     "access": "Open-Meteo forecast API (models=gfs_hrrr)", "resolution": "3 km model, one point", "cadence": "Hourly",
+     "description": "Fallback for Current conditions when the selected point is outside the stored California grid."},
     {"id": "nws_alerts", "name": "Weather watches, warnings and advisories", "provider": "National Weather Service",
      "access": "api.weather.gov (active alerts; forecast-zone shapes)", "resolution": "Forecast zones / storm polygons", "cadence": "As issued (refreshed every 5 min)",
      "description": "Red Flag Warnings, wind, flood and coastal-flood alerts and others: at the selected location, and as a map layer for all of California."},
@@ -739,6 +744,14 @@ SOURCES = [
 ]
 
 
+def _noaa_probe():
+    from backend import noaa_grid
+    st = noaa_grid.status()
+    if not st["hours"]:
+        raise RuntimeError(st.get("error") or "no model hours downloaded yet")
+    return {"hours": st["hours"], "runs": st["latest_runs_utc"]}
+
+
 def check_all(region_bbox: Bbox, lat: float, lon: float) -> List[dict]:
     """Fetch every source once (in parallel) and report what worked."""
     from concurrent.futures import ThreadPoolExecutor
@@ -749,6 +762,7 @@ def check_all(region_bbox: Bbox, lat: float, lon: float) -> List[dict]:
         "nasa_firms_viirs": lambda: len(firms_hotspots()["features"]),
         "cdec_raws_fuel_moisture": lambda: len(fuel_moisture((region_bbox[0] - 0.3, region_bbox[1] - 0.3,
                                                               region_bbox[2] + 0.3, region_bbox[3] + 0.3))["features"]),
+        "noaa_models_aws": _noaa_probe,
         "noaa_hrrr_open_meteo": lambda: current_weather(lat, lon)["valid_time_utc"],
         "nws_alerts": lambda: len(nws_alerts(lat, lon)),
         "usgs_3dep": lambda: slope_overlay(region_bbox)["pixel_m"],

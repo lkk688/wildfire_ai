@@ -1,162 +1,133 @@
 """
-Hourly NOAA HRRR weather (past 24 h and the forecast ahead) on fixed map tiles, for the time slider on the risk map.
+Hourly weather on fixed map tiles for the time slider on the risk map: the past 24 h and about 10 days ahead.
+
+Data come from backend/noaa_grid.py, which reads NOAA HRRR (3 km, to 48 h) and the National Blend of Models (NBM,
+2.5 km, beyond that, 3- to 6-hourly) straight from NOAA's open-data buckets on AWS onto a 0.03 degree grid over
+California. No per-request upstream calls happen here: a tile is read from that local grid.
 
 A tile is TILE x TILE cells of a lat/lon lattice with spacing `step` degrees; tile (ti, tj) covers
 lat [ti*TILE*step, (ti+1)*TILE*step] and lon likewise, and carries its (TILE+1)^2 corner points so the browser can
 interpolate inside it. Because tiles are fixed, panning the map only asks for tiles it has not seen.
-
-Values come from Open-Meteo (models=gfs_hrrr), which serves HRRR's 3 km output. Each lattice point is cached in a
-small SQLite file (backend/cache/) so a restart or a slow upstream does not mean refetching; if Open-Meteo does not
-answer, the last good values (up to 12 h old) are served and marked stale. Nothing is filled in or invented.
 """
 from __future__ import annotations
 
-import json
+import datetime as dt
 import math
-import sqlite3
-import threading
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from collections import OrderedDict
+from typing import Optional, Tuple
 
-from backend import live_sources as live
+import numpy as np
+
+from backend import noaa_grid as ng
 
 TILE = 6
-STEPS = [0.03, 0.05, 0.1, 0.2, 0.25, 0.5, 1.0, 2.0]  # 0.03 deg ~ the 3 km HRRR grid
-PAST_H, AHEAD_H = 24, 48
-FRESH_S = 45 * 60          # HRRR runs hourly
-STALE_MAX_S = 12 * 3600
-VARS = {  # key -> (Open-Meteo hourly variable, scale applied before rounding to an integer)
-    "temp_f": ("temperature_2m", 1),
-    "rh": ("relative_humidity_2m", 1),
-    "wspd_mph10": ("wind_speed_10m", 10),
-    "wdir": ("wind_direction_10m", 1),
-    "gust_mph10": ("wind_gusts_10m", 10),
-    "precip_in1000": ("precipitation", 1000),
-    "cloud": ("cloud_cover", 1),
-}
-DB_PATH = Path(__file__).resolve().parent / "cache" / "hrrr_points.sqlite"
-_db_lock = threading.Lock()
-_conn: Optional[sqlite3.Connection] = None
+STEPS = [0.03, 0.05, 0.1, 0.2, 0.25, 0.5, 1.0, 2.0]
+_cache: "OrderedDict[tuple, dict]" = OrderedDict()
 
 
-def _db() -> sqlite3.Connection:
-    global _conn
-    if _conn is None:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        _conn.execute("CREATE TABLE IF NOT EXISTS pts (k TEXT PRIMARY KEY, fetched REAL, t0 INTEGER, data TEXT)")
-        _conn.execute("DELETE FROM pts WHERE fetched < ?", (time.time() - 3 * 86400,))
-        _conn.commit()
-    return _conn
+def _weights(lats: np.ndarray, lons: np.ndarray):
+    """Bilinear corner indices and weights into the stored grid for points; `ok` marks points inside it."""
+    fy, fx = (lats - ng.LAT0) / ng.D, (lons - ng.LON0) / ng.D
+    ok = (fy >= 0) & (fx >= 0) & (fy <= ng.NY - 1) & (fx <= ng.NX - 1)
+    j0 = np.clip(np.floor(fy).astype(int), 0, ng.NY - 2)
+    i0 = np.clip(np.floor(fx).astype(int), 0, ng.NX - 2)
+    wy, wx = np.clip(fy - j0, 0, 1), np.clip(fx - i0, 0, 1)
+    return j0, i0, wy, wx, ok
 
 
-def _key(lat: float, lon: float) -> str:
-    return f"{lat:.4f},{lon:.4f}"
+def _interp(a: np.ndarray, w) -> np.ndarray:
+    """(fields, points) float array from an int16 (fields, NY, NX) hour; NaN where a corner is missing."""
+    j0, i0, wy, wx, ok = w
+    c = [a[:, j0, i0], a[:, j0, i0 + 1], a[:, j0 + 1, i0], a[:, j0 + 1, i0 + 1]]
+    c = [np.where(x == ng.MISSING, np.nan, x.astype(np.float32)) for x in c]
+    v = c[0] * (1 - wx) * (1 - wy) + c[1] * wx * (1 - wy) + c[2] * (1 - wx) * wy + c[3] * wx * wy
+    v[:, ~ok] = np.nan
+    return v
 
 
-def _load(keys: List[str]) -> Dict[str, Tuple[float, int, dict]]:
-    with _db_lock:
-        db = _db()
-        out = {}
-        for i in range(0, len(keys), 500):
-            part = keys[i:i + 500]
-            q = f"SELECT k, fetched, t0, data FROM pts WHERE k IN ({','.join('?' * len(part))})"
-            for k, f, t0, d in db.execute(q, part):
-                out[k] = (f, t0, json.loads(d))
-        return out
-
-
-def _save(rows: List[Tuple[str, float, int, dict]]) -> None:
-    with _db_lock:
-        db = _db()
-        db.executemany("INSERT OR REPLACE INTO pts VALUES (?,?,?,?)", [(k, f, t0, json.dumps(d, separators=(",", ":"))) for k, f, t0, d in rows])
-        db.commit()
-
-
-def _epoch_hour(iso: str) -> int:
-    import datetime as dt
-    return int(dt.datetime.fromisoformat(iso + "+00:00").timestamp() // 3600)
-
-
-def _fetch(points: List[Tuple[float, float]]) -> Dict[str, Tuple[int, dict]]:
-    params = {"latitude": ",".join(f"{a:.4f}" for a, _ in points), "longitude": ",".join(f"{o:.4f}" for _, o in points),
-              "models": "gfs_hrrr", "hourly": ",".join(v[0] for v in VARS.values()), "past_hours": PAST_H,
-              "forecast_hours": AHEAD_H, "timezone": "UTC", "wind_speed_unit": "mph", "temperature_unit": "fahrenheit",
-              "precipitation_unit": "inch"}
-    d = live.om_get(params, len(points), timeout=12).json()
-    d = d if isinstance(d, list) else [d]
-    out = {}
-    for (lat, lon), r in zip(points, d):
-        h = r["hourly"]
-        vals = {k: [None if x is None else round(x * s) for x in h[name]] for k, (name, s) in VARS.items()}
-        out[_key(lat, lon)] = (_epoch_hour(h["time"][0]), vals)
-    return out
-
-
-def pick_step(span_deg: float, cols: int = 12) -> float:
-    return next((s for s in STEPS if span_deg / s <= cols), STEPS[-1])
+def _hours() -> Tuple[list, dict, int]:
+    cat, ver = ng.catalog()
+    now_h = int(time.time() // 3600)
+    hrs = sorted(v for v in cat if v >= now_h - ng.PAST_H)
+    return hrs, cat, ver
 
 
 def forecast_tile(step: float, ti: int, tj: int) -> dict:
     if step not in STEPS:
         raise ValueError(f"step must be one of {STEPS}")
+    hrs, cat, ver = _hours()
+    if not hrs:
+        st = ng.status()
+        raise RuntimeError("The weather grid is still being downloaded from NOAA (first start takes a few minutes)"
+                           + (f"; last error: {st['error']}" if st.get("error") else ""))
+    now_h = int(time.time() // 3600)
+    ck = (step, ti, tj, ver, now_h)
+    if ck in _cache:
+        _cache.move_to_end(ck)
+        return _cache[ck]
     n = TILE + 1
-    lats = [round((ti * TILE + a) * step, 4) for a in range(n)]
-    lons = [round((tj * TILE + b) * step, 4) for b in range(n)]
-    pts = [(la, lo) for la in lats for lo in lons]
-    inside = [live._in_hrrr(la, lo) for la, lo in pts]
-    keys = [_key(*p) for p in pts]
-    now = time.time()
-    have = _load([k for k, ok in zip(keys, inside) if ok])
-    need = [p for p, k, ok in zip(pts, keys, inside) if ok and (k not in have or now - have[k][0] > FRESH_S)]
-    err = None
-    if need:
-        try:
-            got = _fetch(need)
-            _save([(k, now, t0, v) for k, (t0, v) in got.items()])
-            for k, (t0, v) in got.items():
-                have[k] = (now, t0, v)
-            live.STATUS["noaa_hrrr_forecast"] = {"ok": True, "checked_at": live._now_iso(), "error": None}
-        except Exception as e:  # noqa: BLE001
-            err = f"{type(e).__name__}: {str(e)[:160]}"
-            live.STATUS["noaa_hrrr_forecast"] = {"ok": False, "checked_at": live._now_iso(), "error": err}
-    # Common hour axis for the tile: PAST_H before this hour to AHEAD_H after it
-    h_now = int(now // 3600)
-    t0, H = h_now - PAST_H, PAST_H + AHEAD_H
-    out = {k: [None] * (H * n * n) for k in VARS}
-    oldest, stale_pts, missing_pts, h_first, h_last = None, 0, 0, None, None
-    for idx, (k, ok) in enumerate(zip(keys, inside)):
-        if not ok:
-            continue
-        rec = have.get(k)
-        if not rec or now - rec[0] > STALE_MAX_S:
-            missing_pts += 1
-            continue
-        fetched, pt0, vals = rec
-        if now - fetched > FRESH_S:
-            stale_pts += 1
-        oldest = fetched if oldest is None else min(oldest, fetched)
-        for var, arr in vals.items():
-            if var not in out:
+    lats = np.array([round((ti * TILE + a) * step, 4) for a in range(n)])
+    lons = np.array([round((tj * TILE + b) * step, 4) for b in range(n)])
+    LA, LO = np.meshgrid(lats, lons, indexing="ij")
+    w = _weights(LA.ravel(), LO.ravel())
+    outside = int((~w[4]).sum())
+    vals = {f: [] for f in ng.FIELDS}
+    times, src = [], []
+    if outside < n * n:
+        for v in hrs:
+            a = ng.hour_array(v)
+            if a is None:
                 continue
-            for j, x in enumerate(arr):
-                h = pt0 + j - t0
-                if 0 <= h < H and x is not None:
-                    out[var][h * n * n + idx] = x
-                    if var == "temp_f":
-                        h_first = h if h_first is None else min(h_first, h)
-                        h_last = h if h_last is None else max(h_last, h)
-    if missing_pts and missing_pts == sum(inside) and err:
-        raise RuntimeError(f"No weather cached for this area yet: {err}")
-    return {"step": step, "tile": TILE, "ti": ti, "tj": tj, "lat0": lats[0], "lon0": lons[0], "n": n,
-            "t0": t0, "hours": H, "now_hour": h_now,
-            "first_hour": None if h_first is None else t0 + h_first, "last_hour": None if h_last is None else t0 + h_last,
-            "vars": out,
-            "scale": {"temp_f": 1, "rh": 1, "wspd_mph10": 10, "wdir": 1, "gust_mph10": 10, "precip_in1000": 1000, "cloud": 1},
-            "fetched_utc": live._iso(oldest) if oldest else None, "stale_points": stale_pts, "missing_points": missing_pts,
-            "upstream_error": err,
-            "source": "NOAA HRRR 3 km (hourly; past hours stitched from earlier runs) via Open-Meteo, models=gfs_hrrr"}
+            x = _interp(a, w)
+            for k, f in enumerate(ng.FIELDS):
+                vals[f].extend(None if math.isnan(y) else int(round(y)) for y in x[k])
+            times.append(v)
+            src.append("h" if cat[v]["product"] == "hrrr" else "n")
+    runs = {}
+    for v in times:
+        m = cat[v]
+        if v >= now_h:
+            runs[m["product"]] = max(runs.get(m["product"], 0), m["run"])
+    out = {"step": step, "tile": TILE, "ti": ti, "tj": tj, "lat0": float(lats[0]), "lon0": float(lons[0]), "n": n,
+           "times": times, "src": "".join(src), "now_hour": now_h, "vars": vals, "scale": ng.SCALE,
+           "runs_utc": {k: ng._iso(r) for k, r in runs.items()}, "outside_points": outside,
+           "source": "NOAA HRRR 3 km (past 24 h and next 48 h, hourly) and NOAA National Blend of Models 2.5 km "
+                     "(after that, 3- to 6-hourly), read from NOAA's open data on AWS"}
+    _cache[ck] = out
+    while len(_cache) > 200:
+        _cache.popitem(last=False)
+    return out
+
+
+def point_now(lat: float, lon: float) -> Optional[dict]:
+    """Model weather at a point for the current hour (for the Conditions panel), or None outside the grid."""
+    hrs, cat, _ = _hours()
+    now_h = int(time.time() // 3600)
+    if now_h not in cat:
+        return None
+    w = _weights(np.array([lat]), np.array([lon]))
+    if not w[4][0]:
+        return None
+    a = ng.hour_array(now_h)
+    if a is None:
+        return None
+    x = _interp(a, w)[:, 0]
+    if np.isnan(x[:5]).any():
+        return None
+    f = dict(zip(ng.FIELDS, (float(y) / ng.SCALE[k] for k, y in zip(ng.FIELDS, x))))
+    spd = math.hypot(f["u_mph10"], f["v_mph10"])
+    wdir = (math.degrees(math.atan2(-f["u_mph10"], -f["v_mph10"])) + 360) % 360
+    m = cat[now_h]
+    from backend.live_sources import cardinal
+    return {"source": f"NOAA HRRR 3 km, run {ng._iso(m['run'])} (+{m['lead']} h), from NOAA open data on AWS",
+            "model_run_utc": ng._iso(m["run"]), "valid_time_utc": ng._iso(now_h), "grid_lat": round(lat, 3), "grid_lon": round(lon, 3),
+            "temperature_f": round(f["temp_f10"], 1), "relative_humidity_pct": round(f["rh"]),
+            "wind_speed_mph": round(spd, 1), "wind_gust_mph": round(f["gust_mph10"], 1),
+            "wind_direction_deg": round(wdir), "wind_direction_cardinal": cardinal(wdir),
+            "precip_in_per_h": round(f["precip_in1000"], 3) if not math.isnan(f["precip_in1000"]) else None,
+            "cloud_pct": None if math.isnan(f["cloud"]) else round(f["cloud"]),
+            "fetched_utc": dt.datetime.fromtimestamp(m["fetched"], dt.timezone.utc).isoformat(timespec="minutes") if m.get("fetched") else None}
 
 
 def tile_index(lat: float, lon: float, step: float) -> Tuple[int, int]:

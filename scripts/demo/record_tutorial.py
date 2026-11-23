@@ -202,8 +202,8 @@ async def main():
         await pg.wait_for_timeout(800)
 
         # ---------------------------------------------------------------- weather and time slider
-        await cap("RISK MAP · STEP 4 OF 6", "Weather: the past day and the forecast",
-                  "Pick a field in the Weather panel: NOAA HRRR model, hourly, for the whole map", lift=True)
+        await cap("RISK MAP · STEP 4 OF 6", "Weather: the past day and a 10-day forecast",
+                  "Pick a field in the Weather panel: NOAA HRRR, then the National Blend of Models to 10 days", lift=True)
         await mark("map_weather")
         for label in ("Annual burn probability", "Fire Hazard Severity Zones"):
             await pg.locator("label", has_text=label).locator("input").uncheck()
@@ -219,7 +219,7 @@ async def main():
         await spot()
         await pg.wait_for_selector("#time-slider input[type=range]", timeout=60000)
 
-        await cap("RISK MAP · STEP 4 OF 6", "Drag the time slider", "Grey = the past 24 hours, blue = the forecast. The readout shows the values under the pointer", lift=True)
+        await cap("RISK MAP · STEP 4 OF 6", "Drag the time slider", "Grey = the past 24 hours, blue = HRRR hourly forecast, violet = NBM to 10 days. The readout shows the values under the pointer", lift=True)
         await spot("#time-slider")
         rng = pg.locator("#time-slider input[type=range]")
         bb = await rng.bounding_box()

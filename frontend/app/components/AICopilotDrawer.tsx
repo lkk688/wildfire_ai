@@ -174,7 +174,7 @@ export default function AICopilotDrawer({ selectedRegion }: AICopilotDrawerProps
         persona === 'firefighter'
           ? `### 🚒 Fire operations mode
 My tools query the same live sources as the map:
-* **NOAA HRRR** weather and wind (via Open-Meteo) and **NWS** alerts such as Red Flag Warnings
+* **NOAA HRRR** and **NBM** weather and wind (NOAA open data) and **NWS** alerts such as Red Flag Warnings
 * **CDEC RAWS** 10-h fuel moisture, hourly
 * **Active fires**: CAL FIRE incidents, NIFC perimeters, NASA FIRMS satellite detections
 * **Location context**: FHSZ zone, USDA annual burn probability, land cover, past fires, building footprints, slope, and Bellwether (pilot area)

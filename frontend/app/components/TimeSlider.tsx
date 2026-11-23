@@ -8,9 +8,12 @@ import { WX_VARS, WxVar, cardinal, ffwiClass } from '../lib/weatherVars';
 const H = 3600 * 1000;
 const fmtDay = (h: number) => new Date(h * H).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 const fmtHour = (h: number) => new Date(h * H).toLocaleTimeString([], { hour: 'numeric' });
-const rel = (d: number) => (d === 0 ? 'now' : d > 0 ? `in ${d} h` : `${-d} h ago`);
+const rel = (d: number) => (d === 0 ? 'now' : Math.abs(d) < 48 ? (d > 0 ? `in ${d} h` : `${-d} h ago`) : `in ${Math.floor(d / 24)} d ${d % 24} h`);
+const runLabel = (iso?: string) => (iso ? `${iso.slice(11, 13)}z ${new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : '—');
 
-// Time slider for the weather layers (like a weather app): past 24 h of HRRR plus its forecast, one step per hour.
+// Time slider for the weather layers (like a weather app): the past 24 h and about 10 days ahead. HRRR, hourly, up
+// to 48 h; then the National Blend of Models (NBM), whose steps are 3 h and later 6 h apart (values in between are
+// interpolated, and the readout says so).
 export default function TimeSlider({
   store, hour, setHour, field, center,
 }: {
@@ -31,8 +34,9 @@ export default function TimeSlider({
     if (!playing || !range) return;
     const t = setInterval(() => setHour((p) => {
       const cur = p ?? range.now;
-      return cur + 1 > range.last ? range.first : cur + 1;
-    }), 650);
+      const step = range.hrrrLast != null && cur >= range.hrrrLast ? 3 : 1; // hourly while HRRR, then NBM's steps
+      return cur + step > range.last ? range.first : cur + step;
+    }), 550);
     return () => clearInterval(t);
   }, [playing, range, setHour]);
 
@@ -40,7 +44,7 @@ export default function TimeSlider({
     return (
       <div id="time-slider" className="absolute bottom-4 left-16 right-[15.5rem] z-30 rounded-2xl bg-slate-950/90 border border-slate-700/80 backdrop-blur px-4 py-3 text-xs text-slate-400 flex items-center gap-2">
         {st.failed && !st.loading ? <CloudOff className="w-4 h-4 text-rose-400" /> : <Loader2 className="w-4 h-4 animate-spin" />}
-        {st.failed && !st.loading ? `Weather data unavailable: ${st.error}` : 'Loading hourly HRRR weather for this view…'}
+        {st.failed && !st.loading ? `Weather data unavailable: ${st.error}` : 'Loading NOAA weather for this view…'}
       </div>
     );
   }
@@ -48,9 +52,12 @@ export default function TimeSlider({
   const p = store.hover || center;
   const s = store.sample(p.lat, p.lng, h);
   const d = h - range.now;
+  const src = store.sourceAt(h);
+  const long = range.last - range.first > 96;
   const ticks: number[] = [];
-  for (let x = range.first; x <= range.last; x++) if (new Date(x * H).getHours() % 6 === 0) ticks.push(x);
+  for (let x = range.first; x <= range.last; x++) if (new Date(x * H).getHours() % (long ? 12 : 6) === 0) ticks.push(x);
   const pos = (x: number) => `${((x - range.first) / (range.last - range.first)) * 100}%`;
+  const hEnd = range.hrrrLast ?? range.last;
   const val = (v: WxVar) => (s ? WX_VARS[v].fmt(s[v]) : '—');
 
   return (
@@ -67,7 +74,7 @@ export default function TimeSlider({
           <div className="text-sm font-bold text-white leading-tight">{fmtDay(h)} · {fmtHour(h)}</div>
           <div className="text-[10px] leading-tight">
             <span className={d < 0 ? 'text-slate-400' : d === 0 ? 'text-emerald-300' : 'text-sky-300'}>{rel(d)}</span>
-            <span className="text-slate-500"> · {d < 0 ? 'past (HRRR analysis)' : 'HRRR forecast'}</span>
+            <span className="text-slate-500"> · {d < 0 ? 'past (HRRR)' : src?.model === 'nbm' ? `NBM forecast${src.between ? ', between model steps' : ''}` : 'HRRR forecast'}</span>
           </div>
         </div>
         {d !== 0 && (
@@ -91,11 +98,16 @@ export default function TimeSlider({
 
       <div className="relative mt-1.5 h-9">
         {/* past part of the track is shaded */}
-        <div className="absolute top-[9px] left-0 right-0 h-1.5 rounded-full bg-sky-500/25" />
+        {/* track: past | HRRR hourly forecast | NBM forecast */}
+        <div className="absolute top-[9px] left-0 right-0 h-1.5 rounded-full bg-violet-400/25" />
+        <div className="absolute top-[9px] h-1.5 bg-sky-500/35" style={{ left: pos(range.now), width: `calc(${pos(hEnd)} - ${pos(range.now)})` }} />
         <div className="absolute top-[9px] left-0 h-1.5 rounded-l-full bg-slate-600/70" style={{ width: pos(range.now) }} />
         <div className="absolute top-[3px] w-0.5 h-[18px] bg-emerald-400 rounded" style={{ left: pos(range.now) }} title="Now" />
         {ticks.map((x) => {
           const midnight = new Date(x * H).getHours() === 0;
+          if (long && !midnight) {
+            return <div key={x} className="absolute top-[18px] w-px h-1 bg-slate-600 pointer-events-none" style={{ left: pos(x) }} />;
+          }
           return (
             <div key={x} className="absolute top-[18px] -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ left: pos(x) }}>
               <div className={`w-px ${midnight ? 'h-2 bg-slate-300' : 'h-1.5 bg-slate-500'}`} />
@@ -122,10 +134,11 @@ export default function TimeSlider({
       </div>
       <div className="flex justify-between text-[9px] text-slate-500 -mt-0.5">
         <span>
-          NOAA HRRR 3 km via Open-Meteo · local time · {st.loading ? <span className="text-sky-300">loading {st.loading} tile{st.loading > 1 ? 's' : ''}…</span> : `${st.tiles} tiles${st.fromCache ? ` (${st.fromCache} from cache)` : ''}`}
-          {st.stale && <span className="text-amber-300"> · source not answering, some values from {st.fetchedAt ? new Date(st.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'earlier'}</span>}
+          <span className="inline-block w-2 h-1.5 rounded-sm bg-sky-500/70 align-middle" /> HRRR 3 km, hourly (run {runLabel(st.runs.hrrr)}) ·{' '}
+          <span className="inline-block w-2 h-1.5 rounded-sm bg-violet-400/70 align-middle" /> NBM 2.5 km, 3-6 h steps (run {runLabel(st.runs.nbm)}) · NOAA open data · local time · {st.loading ? <span className="text-sky-300">loading {st.loading} tile{st.loading > 1 ? 's' : ''}…</span> : `${st.tiles} tiles${st.fromCache ? ` (${st.fromCache} from cache)` : ''}`}
+          {st.failed > 0 && <span className="text-amber-300"> · {st.failed} tile{st.failed > 1 ? 's' : ''} not loaded, retrying</span>}
         </span>
-        <span>Hover the map for values at a spot · drag, or ←/→ on the slider</span>
+        <span className="whitespace-nowrap">Hover the map for values · drag, or ←/→</span>
       </div>
     </div>
   );

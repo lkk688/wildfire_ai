@@ -1,26 +1,31 @@
-// Hourly HRRR weather on fixed map tiles (/api/weather/forecast-tile), shared by the colour field, the wind animation,
-// the time slider and the hover readout. Tiles go through the browser cache (lib/cache.ts), so a tile seen once
-// paints instantly when the map comes back to it.
+// Weather on fixed map tiles (/api/weather/grid-tile), shared by the colour field, the wind animation, the time slider
+// and the hover readout: NOAA HRRR hourly for the past 24 h and next 48 h, then the National Blend of Models every
+// 3-6 h to about 10 days. Tiles go through the browser cache (lib/cache.ts), so a tile seen once paints instantly when
+// the map comes back to it.
 import { swrJSON } from './cache';
 import { WxSample, fosberg } from './weatherVars';
 
 export const TILE = 6;
 export const STEPS = [0.03, 0.05, 0.1, 0.2, 0.25, 0.5, 1.0, 2.0];
-const TTL = 40 * 60 * 1000;
-const MAX_TILES = 20;
-const CONCURRENT = 3; // tiles in flight at once (Open-Meteo's free tier is rate-limited)
+const TTL = 20 * 60 * 1000; // new model runs arrive about hourly
+const MAX_TILES = 30;
+const CONCURRENT = 6; // tiles in flight at once (served from the grid on our own server)
+const MAX_GAP = 6; // hours between model steps that may be interpolated
 
+type Field = 'temp_f10' | 'rh' | 'u_mph10' | 'v_mph10' | 'gust_mph10' | 'precip_in1000' | 'cloud';
 export type Tile = {
-  step: number; ti: number; tj: number; lat0: number; lon0: number; n: number; t0: number; hours: number; now_hour: number;
-  first_hour: number | null; last_hour: number | null;
-  vars: Record<'temp_f' | 'rh' | 'wspd_mph10' | 'wdir' | 'gust_mph10' | 'precip_in1000' | 'cloud', (number | null)[]>;
-  fetched_utc: string | null; stale_points: number; missing_points: number; upstream_error: string | null; source: string;
+  step: number; ti: number; tj: number; lat0: number; lon0: number; n: number;
+  times: number[]; src: string; now_hour: number;
+  vars: Record<Field, (number | null)[]>; scale: Record<Field, number>;
+  runs_utc: Partial<Record<'hrrr' | 'nbm', string>>; outside_points: number; source: string;
 };
 
 export type WxStatus = {
-  tiles: number; loading: number; failed: number; stale: boolean; fetchedAt: string | null; error: string | null;
-  step: number; fromCache: number;
+  tiles: number; loading: number; failed: number; error: string | null; step: number; fromCache: number;
+  runs: Partial<Record<'hrrr' | 'nbm', string>>;
 };
+
+export type WxRange = { first: number; last: number; now: number; hrrrLast: number | null };
 
 const key = (step: number, ti: number, tj: number) => `${step}|${ti}|${tj}`;
 const RAD = Math.PI / 180;
@@ -76,7 +81,7 @@ export class WeatherStore {
     s = Math.max(s, -85);
     n = Math.min(n, 85);
     const span = Math.max(e - w, (n - s) * 1.3);
-    let step = STEPS.find((st) => span / st <= 12) ?? STEPS[STEPS.length - 1];
+    let step = STEPS.find((st) => span / st <= 24) ?? STEPS[STEPS.length - 1];
     const count = (st: number) => {
       const sz = TILE * st;
       return (Math.floor(n / sz) - Math.floor(s / sz) + 1) * (Math.floor(e / sz) - Math.floor(w / sz) + 1);
@@ -113,7 +118,7 @@ export class WeatherStore {
     this.active++;
     this.emit();
     swrJSON<{ tile: Tile }>(
-      `/api/weather/forecast-tile?step=${step}&ti=${ti}&tj=${tj}`,
+      `/api/weather/grid-tile?step=${step}&ti=${ti}&tj=${tj}`,
       TTL,
       (d, meta) => {
         this.tiles.set(k, d.tile);
@@ -140,80 +145,112 @@ export class WeatherStore {
 
   status(): WxStatus {
     const cur = [...this.tiles.values()].filter((t) => t.step === this.step);
-    const fetched = cur.map((t) => t.fetched_utc).filter(Boolean).sort() as string[];
+    const runs: WxStatus['runs'] = {};
+    for (const t of cur) for (const [k, v] of Object.entries(t.runs_utc || {})) {
+      const kk = k as 'hrrr' | 'nbm';
+      if (!runs[kk] || (v as string) > (runs[kk] as string)) runs[kk] = v as string;
+    }
     return {
-      tiles: cur.length, loading: this.loading.size, failed: this.failed.size, step: this.step,
-      stale: cur.some((t) => t.stale_points > 0), fetchedAt: fetched[0] ?? null,
-      error: [...this.failed.values()][0] ?? cur.find((t) => t.upstream_error)?.upstream_error ?? null,
+      tiles: cur.length, loading: this.loading.size, failed: this.failed.size, step: this.step, runs,
+      error: [...this.failed.values()][0] ?? null,
       fromCache: [...this.cachedKeys].filter((k) => k.startsWith(`${this.step}|`)).length,
     };
   }
 
-  /** Hours (epoch hours, UTC) with data in the loaded tiles, and the current hour. */
-  range(): { first: number; last: number; now: number } | null {
-    let first = Infinity, last = -Infinity, now = -Infinity;
+  /** Hours (epoch hours, UTC) with data in the loaded tiles, the current hour and the last HRRR hour. */
+  range(): WxRange | null {
+    let first = Infinity, last = -Infinity, now = -Infinity, hrrrLast = -Infinity;
     for (const t of this.tiles.values()) {
-      if (t.first_hour != null) first = Math.min(first, t.first_hour);
-      if (t.last_hour != null) last = Math.max(last, t.last_hour);
+      if (!t.times?.length) continue;
+      first = Math.min(first, t.times[0]);
+      last = Math.max(last, t.times[t.times.length - 1]);
       now = Math.max(now, t.now_hour);
+      const h = t.src.lastIndexOf('h');
+      if (h >= 0) hrrrLast = Math.max(hrrrLast, t.times[h]);
     }
-    return Number.isFinite(first) && Number.isFinite(last) ? { first, last, now } : null;
+    return Number.isFinite(first) && Number.isFinite(last)
+      ? { first, last, now, hrrrLast: Number.isFinite(hrrrLast) ? hrrrLast : null } : null;
   }
 
-  // Tile + bilinear weights for a point, trying the current spacing first, then others already loaded.
+  /** Which model an hour comes from, and whether it falls between two of the model's time steps. */
+  sourceAt(hour: number): { model: 'hrrr' | 'nbm'; between: boolean } | null {
+    for (const t of this.tiles.values()) {
+      const k = this.timeIndex(t, hour);
+      if (k) return { model: t.src[k.k0] === 'n' || t.src[k.k1] === 'n' ? 'nbm' : 'hrrr', between: k.w > 0 && k.w < 1 };
+    }
+    return null;
+  }
+
+  // Bracketing time steps of a tile for an hour (k0, k1 and weight w of k1), memoised per tile.
+  private tIdx = new WeakMap<Tile, { hour: number; r: { k0: number; k1: number; w: number } | null }>();
+  private timeIndex(t: Tile, hour: number) {
+    const m = this.tIdx.get(t);
+    if (m && m.hour === hour) return m.r;
+    const T = t.times;
+    let r: { k0: number; k1: number; w: number } | null = null;
+    if (T.length && hour >= T[0] && hour <= T[T.length - 1]) {
+      let lo = 0, hi = T.length - 1;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (T[mid] <= hour) lo = mid;
+        else hi = mid;
+      }
+      if (T[lo] === hour) r = { k0: lo, k1: lo, w: 0 };
+      else if (T[hi] === hour) r = { k0: hi, k1: hi, w: 0 };
+      else if (T[hi] - T[lo] <= MAX_GAP) r = { k0: lo, k1: hi, w: (hour - T[lo]) / (T[hi] - T[lo]) };
+    }
+    this.tIdx.set(t, { hour, r });
+    return r;
+  }
+
+  // Tile, bilinear corners and time weights for a point, trying the current spacing first, then others loaded.
   private locate(lat: number, lng: number, hour: number) {
     const order = [this.step, ...STEPS.filter((s) => s !== this.step).sort((a, b) => Math.abs(Math.log(a / this.step)) - Math.abs(Math.log(b / this.step)))];
     for (const step of order) {
       const sz = TILE * step;
       const t = this.tiles.get(key(step, Math.floor(lat / sz), Math.floor(lng / sz)));
       if (!t) continue;
-      const h = hour - t.t0;
-      if (h < 0 || h >= t.hours) continue;
+      const k = this.timeIndex(t, hour);
+      if (!k) continue;
       const a = (lat - t.lat0) / step, b = (lng - t.lon0) / step;
       const i = Math.min(TILE - 1, Math.max(0, Math.floor(a))), j = Math.min(TILE - 1, Math.max(0, Math.floor(b)));
-      const nn = t.n * t.n, base = h * nn + i * t.n + j;
-      return { t, idx: [base, base + 1, base + t.n, base + t.n + 1], fy: a - i, fx: b - j };
+      const nn = t.n * t.n, c = i * t.n + j;
+      return { t, c: [c, c + 1, c + t.n, c + t.n + 1], b0: k.k0 * nn, b1: k.k1 * nn, w: k.w, fy: a - i, fx: b - j };
     }
     return null;
   }
 
-  private lerp(arr: (number | null)[], idx: number[], fx: number, fy: number): number | null {
-    const a = arr[idx[0]], b = arr[idx[1]], c = arr[idx[2]], d = arr[idx[3]];
-    if (a == null || b == null || c == null || d == null) return null;
-    return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
+  private val(L: NonNullable<ReturnType<WeatherStore['locate']>>, f: Field): number | null {
+    const arr = L.t.vars[f], { c, fx, fy } = L;
+    const bw = [(1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy];
+    let out = 0;
+    for (const [base, tw] of L.w > 0 ? [[L.b0, 1 - L.w], [L.b1, L.w]] : [[L.b0, 1]]) {
+      for (let q = 0; q < 4; q++) {
+        const x = arr[base + c[q]];
+        if (x == null) return null;
+        out += tw * bw[q] * x;
+      }
+    }
+    return out / (L.t.scale?.[f] ?? 1);
   }
 
   /** Wind (mph) towards east / north at a point and hour, or null. Fast path for the particle animation. */
   sampleUV(lat: number, lng: number, hour: number): { u: number; v: number } | null {
     const L = this.locate(lat, lng, hour);
     if (!L) return null;
-    const sp = L.t.vars.wspd_mph10, dr = L.t.vars.wdir;
-    let u = 0, v = 0;
-    const w = [(1 - L.fx) * (1 - L.fy), L.fx * (1 - L.fy), (1 - L.fx) * L.fy, L.fx * L.fy];
-    for (let q = 0; q < 4; q++) {
-      const s = sp[L.idx[q]], d = dr[L.idx[q]];
-      if (s == null || d == null) return null;
-      const to = (d + 180) * RAD;
-      u += w[q] * (s / 10) * Math.sin(to);
-      v += w[q] * (s / 10) * Math.cos(to);
-    }
-    return { u, v };
+    const u = this.val(L, 'u_mph10'), v = this.val(L, 'v_mph10');
+    return u == null || v == null ? null : { u, v };
   }
 
   /** Every variable at a point and hour (display units), or null where there is no data. */
   sample(lat: number, lng: number, hour: number): WxSample | null {
     const L = this.locate(lat, lng, hour);
     if (!L) return null;
-    const V = L.t.vars;
-    const g = (a: (number | null)[]) => this.lerp(a, L.idx, L.fx, L.fy);
-    const temp = g(V.temp_f), rh = g(V.rh), gust = g(V.gust_mph10), precip = g(V.precip_in1000), cloud = g(V.cloud);
-    const uv = this.sampleUV(lat, lng, hour);
-    if (temp == null || rh == null || uv == null) return null;
-    const wspd = Math.hypot(uv.u, uv.v);
-    const wdir = ((Math.atan2(-uv.u, -uv.v) / RAD) + 360) % 360;
-    return {
-      temp, rh, wspd, wdir, gust: (gust ?? 0) / 10, precip: (precip ?? 0) / 1000, cloud: cloud ?? 0,
-      ffwi: fosberg(temp, rh, wspd),
-    };
+    const temp = this.val(L, 'temp_f10'), rh = this.val(L, 'rh'), u = this.val(L, 'u_mph10'), v = this.val(L, 'v_mph10');
+    if (temp == null || rh == null || u == null || v == null) return null;
+    const gust = this.val(L, 'gust_mph10'), precip = this.val(L, 'precip_in1000'), cloud = this.val(L, 'cloud');
+    const wspd = Math.hypot(u, v);
+    const wdir = ((Math.atan2(-u, -v) / RAD) + 360) % 360;
+    return { temp, rh, wspd, wdir, gust: gust ?? 0, precip: precip ?? 0, cloud: cloud ?? 0, ffwi: fosberg(temp, rh, wspd) };
   }
 }

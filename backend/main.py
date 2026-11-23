@@ -1,7 +1,7 @@
 """
 FastAPI Backend Application for Wildfire Risk Mitigation Dashboard
 Map layers come from real sources only: Bellwether GeoTIFFs (partner data), NIFC / CAL FIRE perimeters and incidents,
-NASA FIRMS, CDEC RAWS, NOAA HRRR (Open-Meteo), NWS alerts, USGS 3DEP, Sentinel-2, CAL FIRE FHSZ, ESA WorldCover and
+NASA FIRMS, CDEC RAWS, NOAA HRRR and NBM (NOAA open data on AWS), NWS alerts, USGS 3DEP, Sentinel-2, CAL FIRE FHSZ, ESA WorldCover and
 Microsoft building footprints. See backend/live_sources.py.
 """
 
@@ -206,20 +206,35 @@ def get_bellwether_regions():
 
 @app.get("/api/weather/live")
 def get_live_weather(lat: Optional[float] = Query(None), lon: Optional[float] = Query(None), region: str = Query("san_bruno")):
-    """Current HRRR conditions (via Open-Meteo) and active NWS alerts at a point (default: region centre)."""
+    """Current HRRR conditions (NOAA grid on this server; Open-Meteo outside it) and active NWS alerts at a point (default: region centre)."""
     if lat is None or lon is None:
         lat, lon = REGION_BOUNDS.get(region, REGION_BOUNDS["san_bruno"])["center"]
     return {"success": True, "weather": _live(lambda: gis_service.get_weather(lat, lon))}
 
 
-@app.get("/api/weather/forecast-tile")
-def get_forecast_tile(step: float = Query(...), ti: int = Query(...), tj: int = Query(...)):
-    """Hourly HRRR (past 24 h + forecast) on one fixed map tile: temperature, humidity, wind, gusts, precipitation, cloud."""
+@app.on_event("startup")
+def _start_weather_ingest():
+    """Keep the NOAA HRRR / NBM grid current (backend/noaa_grid.py); set WX_INGEST=0 to switch off."""
+    from backend import noaa_grid
+    noaa_grid.start_background()
+
+
+@app.get("/api/weather/grid-tile")
+def get_grid_tile(step: float = Query(...), ti: int = Query(...), tj: int = Query(...)):
+    """Weather on one fixed map tile, past 24 h to ~10 days ahead (HRRR, then NBM): temperature, humidity, wind,
+    gusts, precipitation, cloud. Read from the NOAA grid kept on this server."""
     if step not in wx.STEPS:
         raise HTTPException(status_code=400, detail=f"step must be one of {wx.STEPS}")
     if abs(ti * wx.TILE * step) > 90 or abs(tj * wx.TILE * step) > 180:
         raise HTTPException(status_code=400, detail="tile outside the globe")
     return {"success": True, "tile": _live(lambda: wx.forecast_tile(step, ti, tj))}
+
+
+@app.get("/api/weather/model-status")
+def get_weather_model_status():
+    """State of the NOAA model download: hours on disk, newest runs, last cycle and errors."""
+    from backend import noaa_grid
+    return {"success": True, "status": noaa_grid.status()}
 
 
 @app.get("/api/weather/alerts")

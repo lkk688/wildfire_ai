@@ -175,7 +175,9 @@ class GISDataService:
         return out
 
     def get_weather(self, lat: float, lon: float) -> Dict:
-        w = dict(live.current_weather(lat, lon))  # copy: the cached dict must not collect alerts
+        from backend import weather_forecast as wx
+        grid = wx.point_now(lat, lon)  # NOAA grid on this server (California); Open-Meteo elsewhere
+        w = grid if grid else dict(live.current_weather(lat, lon))  # copy: the cached dict must not collect alerts
         try:
             w["alerts"] = live.nws_alerts(lat, lon)
         except Exception as e:  # noqa: BLE001

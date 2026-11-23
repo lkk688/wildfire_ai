@@ -27,7 +27,7 @@ class WildfireToolRegistry:
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
         return [
-            _fn("get_live_weather", "Current NOAA HRRR temperature, humidity, wind and gusts (via Open-Meteo) plus active "
+            _fn("get_live_weather", "Current NOAA HRRR temperature, humidity, wind and gusts (NOAA open data; Open-Meteo outside California) plus active "
                 "National Weather Service alerts such as Red Flag Warnings, at a point or the region centre.",
                 {**LATLON, **REGION}),
             _fn("get_live_fuel_moisture", "Latest hourly readings from CDEC RAWS stations near the region: 10-h fuel stick "
