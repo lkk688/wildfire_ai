@@ -9,7 +9,7 @@ Sources (all public, no API key):
   NASA FIRMS VIIRS 375 m (S-NPP, NOAA-20, NOAA-21), last 24 h ... firms.modaps.eosdis.nasa.gov/data/active_fire/
   CDEC RAWS stations, sensor 11 (10-h fuel stick moisture) ... cdec.water.ca.gov
   NOAA HRRR via Open-Meteo (current conditions, wind grid) ... api.open-meteo.com (models=gfs_hrrr)
-  NWS active alerts (Red Flag Warnings) .... api.weather.gov
+  NWS active alerts (Red Flag, wind, flood, ...) and zone shapes ... api.weather.gov
   USGS 3DEP elevation (slope computed here) ... elevation.nationalmap.gov 3DEPElevation ImageServer
   Sentinel-2 NDVI (Esri Sentinel-2 Views, one dated scene) ... sentinel.arcgis.com Sentinel2 ImageServer
   CAL FIRE FHSZ: SRA 2023 (FHSZSRA_23_3) and LRA 2025 (FHSZLRA25_v1_All) ... services1.arcgis.com/jUJYIo9tSA7EHvfZ
@@ -53,8 +53,12 @@ def _now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 
-def cached(source: str, ttl: int) -> Callable:
-    """Cache by arguments for `ttl` seconds and record success/failure for `source`."""
+def cached(source: str, ttl: int, stale_max: int = 0) -> Callable:
+    """Cache by arguments for `ttl` seconds and record success/failure for `source`.
+
+    If the source fails and a previous result younger than `stale_max` seconds exists, that result is returned instead,
+    marked {"stale": True, "fetched_utc": ..., "upstream_error": ...} so the UI can say how old it is. Never invented.
+    """
     def deco(fn: Callable) -> Callable:
         def wrapper(*args, **kwargs):
             key = source + json.dumps([args, kwargs], default=str, sort_keys=True)
@@ -65,7 +69,11 @@ def cached(source: str, ttl: int) -> Callable:
             try:
                 val = fn(*args, **kwargs)
             except Exception as e:  # noqa: BLE001
-                STATUS[source] = {"ok": False, "checked_at": _now_iso(), "error": f"{type(e).__name__}: {str(e)[:200]}"}
+                err = f"{type(e).__name__}: {str(e)[:200]}"
+                if hit and isinstance(hit[1], dict) and time.time() - hit[0] < stale_max:
+                    STATUS[source] = {"ok": False, "checked_at": _now_iso(), "error": err + " (serving the last good result)"}
+                    return {**hit[1], "stale": True, "fetched_utc": _iso(hit[0]), "upstream_error": err}
+                STATUS[source] = {"ok": False, "checked_at": _now_iso(), "error": err}
                 raise
             with _lock:
                 _cache[key] = (time.time(), val)
@@ -76,10 +84,63 @@ def cached(source: str, ttl: int) -> Callable:
     return deco
 
 
+def _iso(ts: float) -> str:
+    return dt.datetime.fromtimestamp(ts, dt.timezone.utc).isoformat(timespec="seconds")
+
+
 def _get(url: str, params: Optional[dict] = None, timeout: int = 45, **kw) -> requests.Response:
     r = requests.get(url, params=params, headers={**HEADERS, **kw.pop("headers", {})}, timeout=timeout, **kw)
     r.raise_for_status()
     return r
+
+
+# Open-Meteo's free tier counts each location as one call (about 600 per minute, 5,000 per hour, 10,000 per day).
+# Every Open-Meteo request goes through this budget; after a 429 the source is left alone for a minute.
+OM_BUDGET_PER_MIN = 450
+_om_calls: List[Tuple[float, int]] = []
+_om_block_until = 0.0
+_om_lock = threading.Lock()
+
+
+class RateLimited(RuntimeError):
+    pass
+
+
+def om_reserve(n_locations: int) -> None:
+    global _om_calls
+    now = time.time()
+    with _om_lock:
+        if now < _om_block_until:
+            raise RateLimited(f"Open-Meteo rate limit reached; pausing requests for {int(_om_block_until - now)} s")
+        _om_calls = [(t, k) for t, k in _om_calls if now - t < 60]
+        if sum(k for _, k in _om_calls) + n_locations > OM_BUDGET_PER_MIN:
+            raise RateLimited("Open-Meteo per-minute budget used up (free tier); try again in a minute")
+        _om_calls.append((now, n_locations))
+
+
+def om_get(params: dict, n_locations: int, timeout: int = 10) -> requests.Response:
+    global _om_block_until
+    om_reserve(n_locations)
+    try:
+        return _get_quick(OPEN_METEO, params, timeout=timeout)
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 429:
+            with _om_lock:
+                _om_block_until = time.time() + 60
+            raise RateLimited("Open-Meteo rate limit reached (HTTP 429); pausing requests for 60 s") from e
+        raise
+
+
+def _get_quick(url: str, params: Optional[dict] = None, timeout: int = 10, tries: int = 2, **kw) -> requests.Response:
+    """For fast APIs (Open-Meteo answers in well under a second): fail fast and retry once instead of hanging 45 s."""
+    for i in range(tries):
+        try:
+            return _get(url, params, timeout=timeout, **dict(kw))
+        except (requests.Timeout, requests.ConnectionError):
+            if i == tries - 1:
+                raise
+            time.sleep(0.5)
+    raise RuntimeError("unreachable")
 
 
 def _arcgis_geojson(layer_url: str, bbox: Bbox, out_fields: str, where: str = "1=1",
@@ -249,12 +310,12 @@ def cardinal(deg: Optional[float]) -> Optional[str]:
     return None if deg is None else COMPASS[int(((deg % 360) + 11.25) // 22.5) % 16]
 
 
-@cached("noaa_hrrr_open_meteo", ttl=600)
+@cached("noaa_hrrr_open_meteo", ttl=600, stale_max=3 * 3600)
 def current_weather(lat: float, lon: float) -> dict:
     params = {"latitude": lat, "longitude": lon, "models": "gfs_hrrr", "wind_speed_unit": "mph",
               "temperature_unit": "fahrenheit", "timezone": "UTC",
               "current": "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m"}
-    d = _get(OPEN_METEO, params).json()
+    d = om_get(params, 1).json()
     c = d["current"]
     return {"source": "NOAA HRRR (3 km) via Open-Meteo", "valid_time_utc": c["time"] + "Z",
             "grid_lat": d["latitude"], "grid_lon": d["longitude"],
@@ -271,7 +332,7 @@ def wind_grid(bbox: Bbox, n: int = 6) -> dict:
     params = {"latitude": ",".join(str(p[0]) for p in pts), "longitude": ",".join(str(p[1]) for p in pts),
               "models": "gfs_hrrr", "wind_speed_unit": "mph", "timezone": "UTC",
               "current": "wind_speed_10m,wind_direction_10m,wind_gusts_10m"}
-    d = _get(OPEN_METEO, params).json()
+    d = om_get(params, len(pts)).json()
     d = d if isinstance(d, list) else [d]
     feats = []
     for (lat, lon), r in zip(pts, d):
@@ -280,6 +341,88 @@ def wind_grid(bbox: Bbox, n: int = 6) -> dict:
             "wind_speed_mph": c["wind_speed_10m"], "wind_gust_mph": c["wind_gusts_10m"],
             "wind_from_deg": c["wind_direction_10m"], "valid_time_utc": c["time"] + "Z"}})
     return {"type": "FeatureCollection", "features": feats, "source": "NOAA HRRR (3 km) via Open-Meteo, 10 m wind"}
+
+
+_HRRR_LCC = None
+
+
+def _in_hrrr(lat: float, lon: float) -> bool:
+    """Inside the HRRR CONUS grid (Lambert conformal, 1799 x 1059 at 3 km, SW corner 21.138N 122.72W)."""
+    global _HRRR_LCC
+    if _HRRR_LCC is None:
+        import pyproj
+        t = pyproj.Transformer.from_crs("EPSG:4326", "+proj=lcc +lat_1=38.5 +lat_2=38.5 +lat_0=38.5 +lon_0=-97.5 "
+                                        "+a=6371229 +b=6371229 +units=m", always_xy=True)
+        x0, y0 = t.transform(-122.719528, 21.138123)
+        _HRRR_LCC = (t, x0, y0)
+    t, x0, y0 = _HRRR_LCC
+    x, y = t.transform(lon, lat)
+    return x0 <= x <= x0 + 1798 * 3000 and y0 <= y <= y0 + 1058 * 3000
+
+
+# NWS watches, warnings and advisories with zone polygons. Most alerts reference forecast zones instead of carrying a
+# polygon; the zone shapes are fetched once from api.weather.gov and kept.
+NWS_COLORS = {  # NWS hazard map colours (weather.gov/help-map)
+    "Red Flag Warning": "#FF1493", "Fire Weather Watch": "#FFDEAD", "Extreme Fire Danger": "#E9967A",
+    "Flash Flood Warning": "#8B0000", "Flash Flood Watch": "#2E8B57", "Flood Warning": "#00FF00", "Flood Watch": "#2E8B57",
+    "Flood Advisory": "#00FF7F", "Coastal Flood Warning": "#228B22", "Coastal Flood Watch": "#66CDAA",
+    "Coastal Flood Advisory": "#7CFC00", "Coastal Flood Statement": "#6B8E23", "High Surf Warning": "#228B22",
+    "High Surf Advisory": "#BA55D3", "Beach Hazards Statement": "#40E0D0", "Rip Current Statement": "#40E0D0",
+    "High Wind Warning": "#DAA520", "High Wind Watch": "#B8860B", "Wind Advisory": "#D2B48C",
+    "Extreme Wind Warning": "#FF8C00", "Dense Fog Advisory": "#708090", "Frost Advisory": "#6495ED",
+    "Freeze Warning": "#483D8B", "Freeze Watch": "#00FFFF", "Winter Storm Warning": "#FF69B4",
+    "Winter Storm Watch": "#4682B4", "Winter Weather Advisory": "#7B68EE", "Heat Advisory": "#FF7F50",
+    "Excessive Heat Warning": "#C71585", "Extreme Heat Warning": "#C71585", "Air Quality Alert": "#808080",
+    "Dense Smoke Advisory": "#F0E68C", "Blowing Dust Advisory": "#BDB76B", "Lake Wind Advisory": "#D2B48C",
+}
+_zone_geom: Dict[str, Tuple[float, Optional[dict]]] = {}
+
+
+def _zone_shape(url: str) -> Optional[dict]:
+    hit = _zone_geom.get(url)
+    if hit and time.time() - hit[0] < 7 * 86400:
+        return hit[1]
+    from shapely.geometry import mapping, shape
+    g = _get(url, headers={"Accept": "application/geo+json"}, timeout=30).json().get("geometry")
+    geom = mapping(shape(g).simplify(0.004, preserve_topology=True)) if g else None
+    _zone_geom[url] = (time.time(), geom)
+    return geom
+
+
+@cached("nws_alert_areas", ttl=300, stale_max=3 * 3600)
+def nws_alert_areas(area: str = "CA") -> dict:
+    """Active NWS alerts for a state, one feature per alert x zone (or the alert's own polygon), drawn in NWS colours."""
+    from concurrent.futures import ThreadPoolExecutor
+    d = _get("https://api.weather.gov/alerts/active", {"area": area}, headers={"Accept": "application/geo+json"}).json()
+    alerts = d.get("features", [])
+    zones = sorted({z for a in alerts if not a.get("geometry") for z in a["properties"].get("affectedZones", [])})
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        shapes = dict(zip(zones, ex.map(lambda z: _safe(lambda: _zone_shape(z)), zones)))
+    feats, now = [], dt.datetime.now(dt.timezone.utc)
+    for a in alerts:
+        p = a["properties"]
+        onset = p.get("onset") or p.get("effective")
+        try:
+            future = dt.datetime.fromisoformat(onset) > now if onset else False
+        except ValueError:
+            future = False
+        props = {"event": p.get("event"), "severity": p.get("severity"), "urgency": p.get("urgency"),
+                 "headline": p.get("headline"), "area": p.get("areaDesc"), "sender": p.get("senderName"),
+                 "onset": onset, "ends": p.get("ends") or p.get("expires"), "not_yet_in_effect": future,
+                 "color": NWS_COLORS.get(p.get("event"), "#94A3B8")}
+        geoms = [a["geometry"]] if a.get("geometry") else [shapes.get(z) for z in p.get("affectedZones", [])]
+        for g in geoms:
+            if g:
+                feats.append({"type": "Feature", "geometry": g, "properties": props})
+    return {"type": "FeatureCollection", "features": feats, "alert_count": len(alerts), "area": area,
+            "fetched_utc": _now_iso(), "source": "National Weather Service, api.weather.gov active alerts; zone shapes from api.weather.gov/zones"}
+
+
+def _safe(fn):
+    try:
+        return fn()
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @cached("nws_alerts", ttl=600)
@@ -569,11 +712,11 @@ SOURCES = [
      "access": "CDEC JSON data servlet", "resolution": "Stations", "cadence": "Hourly",
      "description": "10-h fuel stick moisture (sensor 11), air temperature, humidity and wind at RAWS stations."},
     {"id": "noaa_hrrr_open_meteo", "name": "Current weather and wind", "provider": "NOAA HRRR via Open-Meteo",
-     "access": "Open-Meteo forecast API (models=gfs_hrrr)", "resolution": "3 km", "cadence": "Hourly",
-     "description": "Temperature, humidity, 10 m wind and gusts; the wind layer samples a grid over the view."},
-    {"id": "nws_alerts", "name": "Weather alerts (Red Flag Warnings)", "provider": "National Weather Service",
-     "access": "api.weather.gov", "resolution": "Zones", "cadence": "As issued",
-     "description": "Active watches and warnings at the selected location."},
+     "access": "Open-Meteo forecast API (models=gfs_hrrr)", "resolution": "3 km model; sampled at 0.03-2 deg", "cadence": "Hourly; past 24 h to about +46 h",
+     "description": "Hourly temperature, humidity, wind, gusts, precipitation and cloud cover for the past 24 h and the forecast ahead (about 2 days), on map tiles that follow the view (0.03-2 deg spacing by zoom); drives the weather layers and the time slider. Cached per point on the server."},
+    {"id": "nws_alerts", "name": "Weather watches, warnings and advisories", "provider": "National Weather Service",
+     "access": "api.weather.gov (active alerts; forecast-zone shapes)", "resolution": "Forecast zones / storm polygons", "cadence": "As issued (refreshed every 5 min)",
+     "description": "Red Flag Warnings, wind, flood and coastal-flood alerts and others: at the selected location, and as a map layer for all of California."},
     {"id": "usgs_3dep", "name": "Terrain slope", "provider": "USGS 3D Elevation Program",
      "access": "3DEPElevation ImageServer (DEM); slope computed in this app", "resolution": "~10-30 m as requested",
      "cadence": "Static", "description": "Slope in percent from the 3DEP DEM, classed at 15 / 30 / 50 %."},

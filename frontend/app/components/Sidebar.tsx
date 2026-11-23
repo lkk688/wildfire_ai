@@ -3,11 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import {
   Flame, Layers, Eye, ShieldAlert, Sparkles, MapPin, Shield, Wind, BookOpen, Home, Mountain, Droplet, Radio, Scale,
-  AlertTriangle, CheckCircle2, Loader2, Info, Thermometer,
+  AlertTriangle, CheckCircle2, Loader2, Info, Thermometer, CloudSun,
 } from 'lucide-react';
 import type { LayerToggles } from './MapView';
 import { bellwetherCategories } from '../lib/legend';
 import { LayerState, REGIONS, getJSON } from '../lib/api';
+import { WX_ORDER, WX_VARS, WxVar } from '../lib/weatherVars';
 
 interface SidebarProps {
   activeLayer: '1yr' | '5yr' | 'none';
@@ -23,13 +24,14 @@ interface SidebarProps {
   onOpenDataCatalog: () => void;
   onOpenModelEvaluation: () => void;
   onSwitchToVision?: () => void;
+  wxField: WxVar | 'none';
+  setWxField: (v: WxVar | 'none') => void;
 }
 
 const LAYERS: Array<{ id: keyof LayerToggles; title: string; source: string; icon: React.ReactNode; tone: string }> = [
   { id: 'perimeters', title: 'Fire perimeters & incidents', source: 'NIFC WFIGS · CAL FIRE', icon: <Flame className="w-4 h-4" />, tone: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
   { id: 'hotspots', title: 'Satellite hotspots (24 h)', source: 'NASA FIRMS VIIRS 375 m', icon: <Radio className="w-4 h-4" />, tone: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
   { id: 'fuel', title: 'Fuel moisture (RAWS)', source: 'CDEC, 10-h fuel sticks, hourly', icon: <Droplet className="w-4 h-4" />, tone: 'bg-teal-500/10 text-teal-400 border-teal-500/20' },
-  { id: 'wind', title: 'Wind (HRRR)', source: 'NOAA HRRR 3 km via Open-Meteo', icon: <Wind className="w-4 h-4" />, tone: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
   { id: 'fhsz', title: 'Fire Hazard Severity Zones', source: 'CAL FIRE SRA 2023 · LRA 2025', icon: <Shield className="w-4 h-4" />, tone: 'bg-red-500/10 text-red-400 border-red-500/20' },
   { id: 'wrc', title: 'Annual burn probability', source: 'USDA Wildfire Risk to Communities, 30 m', icon: <Flame className="w-4 h-4" />, tone: 'bg-blue-500/10 text-blue-300 border-blue-500/20' },
   { id: 'slope', title: 'Terrain slope', source: 'USGS 3DEP DEM', icon: <Mountain className="w-4 h-4" />, tone: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
@@ -57,40 +59,68 @@ function StatusLine({ s }: { s?: LayerState }) {
   );
 }
 
-function Conditions({ region }: { region: string }) {
+const localTime = (v?: string | null) =>
+  v ? new Date(v).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+
+function Conditions({ region, layers, setLayers }: { region: string; layers: LayerToggles; setLayers: SidebarProps['setLayers'] }) {
   const [w, setW] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     setW(null);
     setErr(null);
     getJSON(`/api/weather/live?region=${region}`)
       .then((d) => setW(d.weather))
       .catch((e) => setErr(String(e.message || e)));
-  }, [region]);
+  }, [region, attempt]);
+  useEffect(() => {
+    if (!err && !w?.stale) return;
+    const t = setTimeout(() => setAttempt((a) => a + 1), 60 * 1000); // retry while the source is down
+    return () => clearTimeout(t);
+  }, [err, w]);
+  const r = REGIONS[region];
+  const show = (k: 'wind' | 'alerts') => setLayers((p) => ({ ...p, [k]: true }));
   return (
-    <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-1.5">
+    <div id="current-conditions" className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-1.5">
       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400">
         <span className="flex items-center gap-1.5"><Thermometer className="w-3.5 h-3.5 text-blue-400" /> Current conditions</span>
-        <span className="normal-case font-normal text-slate-500">{w ? `HRRR ${w.valid_time_utc}` : ''}</span>
+        <span className="normal-case font-normal text-slate-500">{r ? `at ${r.name.split(' (')[0]} centre` : ''}</span>
       </div>
-      {err && <div className="text-rose-400 text-[11px]">Weather source unavailable: {err}</div>}
+      {err && (
+        <div className="text-rose-400 text-[11px]">
+          {/timed out|ReadTimeout/i.test(err) ? 'The weather feed (Open-Meteo) is not answering right now.' : `Weather source unavailable: ${err}`}{' '}
+          Retrying every minute. <button onClick={() => setAttempt((a) => a + 1)} className="underline cursor-pointer">Retry now</button>
+        </div>
+      )}
       {!w && !err && <div className="text-slate-500 text-[11px]">Loading…</div>}
       {w && (
         <>
           <div className="grid grid-cols-3 gap-2 text-slate-200">
             <div><div className="text-[10px] text-slate-500">Temp</div><b>{w.temperature_f}°F</b></div>
-            <div><div className="text-[10px] text-slate-500">RH</div><b>{w.relative_humidity_pct}%</b></div>
-            <div><div className="text-[10px] text-slate-500">Wind</div><b>{w.wind_direction_cardinal} {w.wind_speed_mph}</b> <span className="text-slate-500">g{w.wind_gust_mph} mph</span></div>
+            <div><div className="text-[10px] text-slate-500">Humidity</div><b>{w.relative_humidity_pct}%</b></div>
+            <div><div className="text-[10px] text-slate-500">Wind from</div><b>{w.wind_direction_cardinal} {w.wind_speed_mph}</b> <span className="text-slate-500">gust {w.wind_gust_mph} mph</span></div>
+          </div>
+          <div className="text-[10px] text-slate-500 leading-snug">
+            Source: <b className="text-slate-400">NOAA HRRR</b> 3 km weather model (via Open-Meteo), grid cell {w.grid_lat?.toFixed(3)}, {w.grid_lon?.toFixed(3)}, valid {localTime(w.valid_time_utc)}.
+            {w.stale && <span className="text-amber-300"> Open-Meteo is not answering; these values were fetched {localTime(w.fetched_utc)}. Retrying.</span>}
+            {!layers.wind && <> <button onClick={() => show('wind')} className="text-blue-300 underline cursor-pointer">Show wind on map</button></>}
           </div>
           {w.alerts?.length ? (
             w.alerts.map((a: any, i: number) => (
-              <div key={i} className={`p-1.5 rounded-lg text-[11px] font-semibold ${a.event?.includes('Red Flag') ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-amber-500/10 text-amber-300 border border-amber-500/30'}`}>
-                {a.event}{a.ends ? ` until ${new Date(a.ends).toLocaleString()}` : ''}
+              <div key={i} className={`p-1.5 rounded-lg text-[11px] ${a.event?.includes('Red Flag') ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-amber-500/10 text-amber-300 border border-amber-500/30'}`}>
+                <div className="font-semibold">{a.event}</div>
+                <div className="text-[10px] opacity-80">
+                  {a.onset && new Date(a.onset) > new Date() ? `starts ${localTime(a.onset)}, ` : 'in effect now, '}until {localTime(a.ends)}
+                </div>
               </div>
             ))
           ) : (
             <div className="text-[10px] text-slate-500">No active NWS alerts at the region centre.</div>
           )}
+          <div className="text-[10px] text-slate-500 leading-snug">
+            Alerts: <b className="text-slate-400">National Weather Service</b> (api.weather.gov), for this point.{' '}
+            {layers.alerts ? <span className="text-slate-400">Shown on the map for all of California.</span> : <button onClick={() => show('alerts')} className="text-emerald-300 underline cursor-pointer">Show all alerts on the map</button>}
+          </div>
         </>
       )}
     </div>
@@ -99,7 +129,7 @@ function Conditions({ region }: { region: string }) {
 
 export default function Sidebar({
   activeLayer, setActiveLayer, selectedRegion, setSelectedRegion, layers, setLayers, layerStatus, opacity, setOpacity,
-  layerStats, onOpenDataCatalog, onOpenModelEvaluation, onSwitchToVision,
+  layerStats, onOpenDataCatalog, onOpenModelEvaluation, onSwitchToVision, wxField, setWxField,
 }: SidebarProps) {
   // Bellwether categories for the model shown on the map (same cut-offs as the overlay)
   const bwWhich: '1yr' | '5yr' = activeLayer === '5yr' ? '5yr' : '1yr';
@@ -151,7 +181,52 @@ export default function Sidebar({
       </div>
 
       <div className="p-5 space-y-4 flex-1">
-        <Conditions region={selectedRegion} />
+        <Conditions region={selectedRegion} layers={layers} setLayers={setLayers} />
+
+        <div id="weather-panel" className="space-y-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <CloudSun className="w-4 h-4 text-sky-400" /> Weather: past 24 h + forecast
+          </div>
+          <p className="text-[11px] text-slate-400 -mt-1 leading-snug">
+            NOAA HRRR model, hourly, for the whole map. Pick the hour on the time slider at the bottom of the map.
+          </p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {(['none', ...WX_ORDER] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setWxField(k)}
+                title={k === 'none' ? 'No colour field' : `${WX_VARS[k].label}: ${WX_VARS[k].note}`}
+                className={`px-1 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer ${wxField === k ? 'bg-sky-500/20 border-sky-500/60 text-sky-200' : 'bg-slate-900/50 border-slate-800 text-slate-400 hover:text-slate-200'}`}
+              >
+                {k === 'none' ? 'Off' : k === 'ffwi' ? 'Fire wx' : WX_VARS[k].short}
+              </button>
+            ))}
+          </div>
+          <StatusLine s={layerStatus.wxfield} />
+          {([
+            ['wind', 'Wind, animated', 'Streaks flow downwind, coloured by speed', <Wind key="w" className="w-4 h-4" />, 'bg-blue-500/10 text-blue-400 border-blue-500/20'],
+            ['alerts', 'Watches & warnings', 'National Weather Service: flood, wind, Red Flag, … (in effect at the slider hour)', <AlertTriangle key="a" className="w-4 h-4" />, 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'],
+          ] as const).map(([id, title, sub, icon, tone]) => (
+            <label key={id} className="block p-2.5 rounded-xl bg-slate-900/50 border border-slate-800 cursor-pointer hover:border-slate-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-1.5 rounded-lg border ${tone}`}>{icon}</div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-200">{title}</div>
+                    <div className="text-[10px] text-slate-400">{sub}</div>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={layers[id]}
+                  onChange={(e) => setLayers((prev) => ({ ...prev, [id]: e.target.checked }))}
+                  className="w-4 h-4 accent-sky-500 cursor-pointer"
+                />
+              </div>
+              <StatusLine s={layerStatus[id]} />
+            </label>
+          ))}
+        </div>
 
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">

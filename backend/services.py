@@ -175,7 +175,7 @@ class GISDataService:
         return out
 
     def get_weather(self, lat: float, lon: float) -> Dict:
-        w = live.current_weather(lat, lon)
+        w = dict(live.current_weather(lat, lon))  # copy: the cached dict must not collect alerts
         try:
             w["alerts"] = live.nws_alerts(lat, lon)
         except Exception as e:  # noqa: BLE001

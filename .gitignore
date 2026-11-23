@@ -62,3 +62,6 @@ backend/static/ndvi_*.png
 
 # Local-only working files
 /paper/
+
+# Server-side cache of live data (HRRR points etc.)
+/backend/cache/

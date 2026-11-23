@@ -8,7 +8,11 @@ export const REGIONS: Record<string, { name: string; center: [number, number]; b
   santa_cruz: { name: 'Santa Cruz Mountains (CZU WUI)', center: [37.125, -122.05], bbox: [-122.18, 37.02, -121.92, 37.22] },
 };
 
-export type LayerState = { state: 'loading' | 'ok' | 'error' | 'off' | 'info'; detail?: string };
+export type LayerState = {
+  state: 'loading' | 'ok' | 'error' | 'off' | 'info';
+  detail?: string;
+  swatches?: Array<{ label: string; color: string }>; // legend entries that depend on live data (e.g. which NWS alerts are active)
+};
 
 export async function getJSON(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(`${API_BASE}${path}`, init);

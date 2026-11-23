@@ -3,6 +3,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { API_BASE, REGIONS, LayerState, getJSON } from '../lib/api';
+import { WindParticles, ScalarField } from '../lib/windParticles';
+import { swrJSON, CacheMeta } from '../lib/cache';
+import { WeatherStore } from '../lib/weatherStore';
+import type { WxVar } from '../lib/weatherVars';
 
 export type LayerToggles = {
   perimeters: boolean;
@@ -14,6 +18,7 @@ export type LayerToggles = {
   fhsz: boolean;
   wrc: boolean;
   wind: boolean;
+  alerts: boolean;
 };
 
 interface MapViewProps {
@@ -25,9 +30,14 @@ interface MapViewProps {
   onSelectLocation: (data: any) => void;
   onLayerStatsUpdate: (stats: any) => void;
   onLayerStatus: (id: string, s: LayerState) => void;
+  wxStore: WeatherStore;
+  wxHour: number | null; // epoch hour picked on the time slider; null = now
+  wxField: WxVar | 'none';
 }
 
 const BUILDING_MIN_ZOOM = 15;
+const MIN = 60 * 1000;
+const DAY = 24 * 60 * MIN;
 
 // Text from external feeds goes into tooltips: escape it.
 const esc = (v: any) =>
@@ -44,6 +54,9 @@ export default function MapView({
   onSelectLocation,
   onLayerStatsUpdate,
   onLayerStatus,
+  wxStore,
+  wxHour,
+  wxField,
 }: MapViewProps) {
   const [map, setMap] = useState<L.Map | null>(null);
   const refs = useRef<Record<string, L.Layer | null>>({});
@@ -59,7 +72,18 @@ export default function MapView({
     refs.current[id] = layer;
     if (layer) layer.addTo(map);
   };
-  const status = (id: string, s: LayerState) => statusRef.current(id, s);
+  // Cached copies are shown at once and refreshed in the background (lib/cache.ts); the status line says so.
+  const meta = useRef<Record<string, CacheMeta>>({});
+  const status = (id: string, s: LayerState) => {
+    const m = meta.current[id];
+    if (m?.cached && s.state === 'ok' && s.detail)
+      s = { ...s, detail: `${s.detail} · cached copy from ${new Date(m.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` };
+    statusRef.current(id, s);
+  };
+  const fail = (id: string) => (e: Error, hadCopy: boolean, at: number | null) =>
+    status(id, hadCopy
+      ? { state: 'info', detail: `Source not answering (${String(e.message || e).slice(0, 120)}); showing the copy from ${at ? new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'earlier'}` }
+      : { state: 'error', detail: String(e.message || e) });
 
   // Map init
   useEffect(() => {
@@ -71,7 +95,7 @@ export default function MapView({
     // Keyless Esri basemaps (the CARTO tiles used before now require an API key)
     const esri = (svc: string) => `https://server.arcgisonline.com/ArcGIS/rest/services/${svc}/MapServer/tile/{z}/{y}/{x}`;
     const data =
-      'Bellwether (X), NIFC, CAL FIRE, NASA FIRMS, CDEC, NOAA HRRR/Open-Meteo, NWS, USGS 3DEP, USDA Forest Service WRC, Copernicus Sentinel-2/Esri, ESA WorldCover, Microsoft Building Footprints';
+      'Bellwether (X), NIFC, CAL FIRE, NASA FIRMS, CDEC, NOAA HRRR/Open-Meteo, NOAA NWS, USGS 3DEP, USDA Forest Service WRC, Copernicus Sentinel-2/Esri, ESA WorldCover, Microsoft Building Footprints';
     const dark = L.layerGroup([
       L.tileLayer(esri('Canvas/World_Dark_Gray_Base'), { maxZoom: 19, maxNativeZoom: 16, attribution: `Esri, HERE, Garmin, OSM | ${data}` }),
       L.tileLayer(esri('Canvas/World_Dark_Gray_Reference'), { maxZoom: 19, maxNativeZoom: 16 }),
@@ -115,8 +139,8 @@ export default function MapView({
       return;
     }
     status('bellwether', { state: 'loading' });
-    getJSON(`/api/layers/bellwether?is_5_year=${activeLayer === '5yr'}&region=${selectedRegion}`)
-      .then((d) => {
+    return swrJSON(`/api/layers/bellwether?is_5_year=${activeLayer === '5yr'}&region=${selectedRegion}`, DAY, (d, m) => {
+      meta.current['bellwether'] = m;
         const lyr = d.layer;
         if (!lyr?.covered) {
           onLayerStatsUpdate(null);
@@ -129,8 +153,7 @@ export default function MapView({
           state: 'ok',
           detail: `${lyr.window}; values for ${fmt(lyr.valid_share_pct, 1)}% of this region`,
         });
-      })
-      .catch((e) => status('bellwether', { state: 'error', detail: String(e.message || e) }));
+    }, fail('bellwether'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, activeLayer, selectedRegion]);
 
@@ -145,8 +168,8 @@ export default function MapView({
     setLayer('perimeters', null);
     if (!layers.perimeters) return status('perimeters', { state: 'off' });
     status('perimeters', { state: 'loading' });
-    getJSON(`/api/layers/perimeters?bbox=${bboxParam(region.bbox)}`)
-      .then((d) => {
+    return swrJSON(`/api/layers/perimeters?bbox=${bboxParam(region.bbox)}`, 5 * MIN, (d, m) => {
+      meta.current['perimeters'] = m;
         const group = L.layerGroup();
         L.geoJSON(d.historic, {
           style: () => ({ color: '#f59e0b', weight: 1.2, dashArray: '4 4', fillColor: '#f59e0b', fillOpacity: 0.08 }),
@@ -184,8 +207,7 @@ export default function MapView({
           state: err ? 'error' : 'ok',
           detail: `${d.current.features.length} current perimeters and ${d.incidents.features.length} CAL FIRE incidents statewide; ${d.historic.features.length} past fires (1950+) in this region${err}`,
         });
-      })
-      .catch((e) => status('perimeters', { state: 'error', detail: String(e.message || e) }));
+    }, fail('perimeters'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.perimeters, selectedRegion]);
 
@@ -195,8 +217,8 @@ export default function MapView({
     setLayer('hotspots', null);
     if (!layers.hotspots) return status('hotspots', { state: 'off' });
     status('hotspots', { state: 'loading' });
-    getJSON('/api/layers/firms-hotspots')
-      .then((d) => {
+    return swrJSON('/api/layers/firms-hotspots', 10 * MIN, (d, m) => {
+      meta.current['hotspots'] = m;
         const fc = d.hotspots;
         setLayer(
           'hotspots',
@@ -221,8 +243,7 @@ export default function MapView({
           state: 'ok',
           detail: `${fc.features.length} VIIRS detections in California, last 24 h${fc.errors?.length ? ` (missing: ${fc.errors.length} sensor file)` : ''}`,
         });
-      })
-      .catch((e) => status('hotspots', { state: 'error', detail: String(e.message || e) }));
+    }, fail('hotspots'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.hotspots]);
 
@@ -232,8 +253,8 @@ export default function MapView({
     setLayer('fuel', null);
     if (!layers.fuel) return status('fuel', { state: 'off' });
     status('fuel', { state: 'loading' });
-    getJSON(`/api/layers/fuel-moisture?bbox=${bboxParam(region.bbox)}`)
-      .then((d) => {
+    return swrJSON(`/api/layers/fuel-moisture?bbox=${bboxParam(region.bbox)}`, 15 * MIN, (d, m) => {
+      meta.current['fuel'] = m;
         const fc = d.stations;
         const color = (fm: number | null) =>
           fm === null || fm === undefined ? '#64748b' : fm <= 6 ? '#dc2626' : fm <= 10 ? '#f97316' : fm <= 15 ? '#eab308' : '#14b8a6';
@@ -252,39 +273,37 @@ export default function MapView({
         );
         const withData = fc.features.filter((f: any) => f.properties.fuel_moisture_10h_pct != null).length;
         status('fuel', { state: 'ok', detail: `${withData}/${fc.features.length} stations reporting (hourly, PST)` });
-      })
-      .catch((e) => status('fuel', { state: 'error', detail: String(e.message || e) }));
+    }, fail('fuel'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.fuel, selectedRegion]);
 
   // ---------------------------------------------------------------- Raster overlays: slope, USDA burn probability, NDVI
-  const rasterLayer = (id: string, on: boolean, path: string, op: number, detail: (l: any) => string) => {
+  const rasterLayer = (id: string, on: boolean, path: string, op: number, detail: (l: any) => string, ttl = 7 * DAY) => {
     if (!map) return;
     setLayer(id, null);
     if (!on) return status(id, { state: 'off' });
     status(id, { state: 'loading' });
-    getJSON(path)
-      .then((d) => {
+    return swrJSON(path, ttl, (d, m) => {
+      meta.current[id] = m;
         setLayer(id, L.imageOverlay(`${API_BASE}${d.layer.image_url}`, d.layer.bounds, { opacity: op, interactive: false }));
         status(id, { state: 'ok', detail: detail(d.layer) });
-      })
-      .catch((e) => status(id, { state: 'error', detail: String(e.message || e) }));
+    }, fail(id));
   };
   useEffect(() => {
-    rasterLayer('slope', layers.slope, `/api/layers/terrain-slope?bbox=${bboxParam(region.bbox)}`, 0.75, (l) =>
+    return rasterLayer('slope', layers.slope, `/api/layers/terrain-slope?bbox=${bboxParam(region.bbox)}`, 0.75, (l) =>
       `~${l.pixel_m} m pixels; ≥30% slope on ${fmt((l.area_share_pct['30_50'] || 0) + (l.area_share_pct.ge50 || 0), 1)}% of the region`,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.slope, selectedRegion]);
   useEffect(() => {
-    rasterLayer('wrc', layers.wrc, `/api/layers/wrc-burn-probability?bbox=${bboxParam(region.bbox)}`, 0.8, (l) =>
+    return rasterLayer('wrc', layers.wrc, `/api/layers/wrc-burn-probability?bbox=${bboxParam(region.bbox)}`, 0.8, (l) =>
       `30 m; max ${fmt(l.max_annual_bp * 100, 2)}%/yr, median ${fmt((l.median_annual_bp_nonzero ?? 0) * 100, 2)}%/yr (landscape as of 2020)`,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.wrc, selectedRegion]);
   useEffect(() => {
-    rasterLayer('ndvi', layers.ndvi, `/api/layers/ndvi?bbox=${bboxParam(region.bbox)}`, 0.7, (l) =>
-      `Scene ${l.acquired_utc?.slice(0, 10)} (${l.cloud_cover_pct}% cloud)`,
+    return rasterLayer('ndvi', layers.ndvi, `/api/layers/ndvi?bbox=${bboxParam(region.bbox)}`, 0.7, (l) =>
+      `Scene ${l.acquired_utc?.slice(0, 10)} (${l.cloud_cover_pct}% cloud)`, DAY,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.ndvi, selectedRegion]);
@@ -295,8 +314,8 @@ export default function MapView({
     setLayer('fhsz', null);
     if (!layers.fhsz) return status('fhsz', { state: 'off' });
     status('fhsz', { state: 'loading' });
-    getJSON(`/api/layers/fhsz?bbox=${bboxParam(region.bbox)}`)
-      .then((d) => {
+    return swrJSON(`/api/layers/fhsz?bbox=${bboxParam(region.bbox)}`, DAY, (d, m) => {
+      meta.current['fhsz'] = m;
         setLayer(
           'fhsz',
           L.geoJSON(d.zones, {
@@ -306,43 +325,169 @@ export default function MapView({
           }),
         );
         status('fhsz', { state: 'ok', detail: `${d.zones.features.length} zone polygons (SRA 2023, LRA 2025)` });
-      })
-      .catch((e) => status('fhsz', { state: 'error', detail: String(e.message || e) }));
+    }, fail('fhsz'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.fhsz, selectedRegion]);
 
-  // ---------------------------------------------------------------- HRRR wind grid
+  // ---------------------------------------------------------------- Hourly HRRR weather (time slider)
+  const wxOn = layers.wind || wxField !== 'none';
+  const hourNow = () => Math.floor(Date.now() / 3600000);
+  const hourRef = useRef<number>(wxHour ?? hourNow());
+  hourRef.current = wxHour ?? hourNow();
+
+  // load the tiles that cover the view, now and after every move
+  useEffect(() => {
+    if (!map || !wxOn) return;
+    const load = () => {
+      const b = map.getBounds().pad(0.1);
+      wxStore.setView(b.getWest(), b.getSouth(), b.getEast(), b.getNorth());
+    };
+    load();
+    map.on('moveend', load);
+    const refresh = setInterval(load, 10 * MIN);
+    return () => {
+      map.off('moveend', load);
+      clearInterval(refresh);
+    };
+  }, [map, wxOn, wxStore]);
+
+  // status lines for the weather layers, from the tile store
+  useEffect(() => {
+    const upd = () => {
+      const st = wxStore.status();
+      const base = `NOAA HRRR, hourly; ${st.tiles} tile${st.tiles === 1 ? '' : 's'} at ${st.step}° spacing${st.fromCache ? `, ${st.fromCache} from cache` : ''}`;
+      const s: LayerState = st.loading && !st.tiles
+        ? { state: 'loading' }
+        : st.failed && !st.tiles
+          ? { state: 'error', detail: `Weather source not answering (${st.error}); retrying every minute` }
+          : st.stale || st.failed
+            ? { state: 'info', detail: `${base}. Open-Meteo is not answering for part of the view; showing the last good values${st.fetchedAt ? ` (from ${new Date(st.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })})` : ''}` }
+            : { state: 'ok', detail: `${base}. Pick the hour on the time slider; hover the map for values.` };
+      if (layers.wind) status('wind', s);
+      if (wxField !== 'none') status('wxfield', s);
+    };
+    if (!layers.wind) status('wind', { state: 'off' });
+    if (wxField === 'none') status('wxfield', { state: 'off' });
+    if (!wxOn) return;
+    upd();
+    return wxStore.subscribe(upd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wxStore, layers.wind, wxField, wxOn]);
+
+  // animated wind
+  const windRef = useRef<WindParticles | null>(null);
+  useEffect(() => {
+    if (!map || !layers.wind) return;
+    const layer = new WindParticles(wxStore, hourRef.current);
+    windRef.current = layer;
+    layer.addTo(map);
+    return () => {
+      windRef.current = null;
+      map.removeLayer(layer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.wind, wxStore]);
+
+  // colour field (temperature, humidity, gusts, rain, cloud, fire weather)
+  const fieldRef = useRef<ScalarField | null>(null);
+  useEffect(() => {
+    if (!map || wxField === 'none') return;
+    const layer = new ScalarField(wxStore, wxField, hourRef.current);
+    fieldRef.current = layer;
+    layer.addTo(map);
+    return () => {
+      fieldRef.current = null;
+      map.removeLayer(layer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, wxField === 'none', wxStore]);
+
+  useEffect(() => {
+    const h = wxHour ?? hourNow();
+    windRef.current?.setHour(h);
+    if (wxField !== 'none') fieldRef.current?.set(wxField, h);
+  }, [wxHour, wxField]);
+
+  // hover position feeds the readout on the time slider
   useEffect(() => {
     if (!map) return;
-    setLayer('wind', null);
-    if (!layers.wind) return status('wind', { state: 'off' });
-    status('wind', { state: 'loading' });
-    getJSON(`/api/weather/wind-grid?bbox=${bboxParam(region.bbox)}&n=6`)
-      .then((d) => {
-        const g = L.layerGroup();
-        let t = '';
-        for (const f of d.wind.features) {
-          const p = f.properties;
-          t = p.valid_time_utc;
-          const to = (p.wind_from_deg + 180) % 360;
-          const icon = L.divIcon({
-            className: '',
-            iconSize: [44, 44],
-            iconAnchor: [22, 22],
-            html: `<div style="transform:rotate(${to}deg);width:44px;height:44px;display:flex;align-items:center;justify-content:center"><svg width="22" height="34" viewBox="0 0 22 34"><path d="M11 0 L20 12 L13 12 L13 34 L9 34 L9 12 L2 12 Z" fill="#60a5fa" stroke="#0f172a" stroke-width="1.5"/></svg></div>`,
-          });
-          L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], { icon, interactive: true })
-            .bindTooltip(
-              `<div class="text-xs"><b>HRRR 10 m wind</b><br/>from ${fmt(p.wind_from_deg)}° at ${fmt(p.wind_speed_mph, 1)} mph (gust ${fmt(p.wind_gust_mph, 1)})<br/>valid ${esc(p.valid_time_utc)}</div>`,
-            )
-            .addTo(g);
-        }
-        setLayer('wind', g);
-        status('wind', { state: 'ok', detail: `HRRR via Open-Meteo, valid ${t}` });
+    const mv = (e: L.LeafletMouseEvent) => wxStore.setHover({ lat: e.latlng.lat, lng: e.latlng.lng });
+    const out = () => wxStore.setHover(null);
+    map.on('mousemove', mv);
+    map.on('mouseout', out);
+    return () => {
+      map.off('mousemove', mv);
+      map.off('mouseout', out);
+    };
+  }, [map, wxStore]);
+
+  // ---------------------------------------------------------------- NWS watches / warnings / advisories (all of CA)
+  // The feed lists alerts that are active or upcoming; the map shows those in effect at the slider's hour.
+  const alertsRef = useRef<any>(null);
+  const drawAlerts = () => {
+    const fc = alertsRef.current;
+    if (!map || !fc || !layers.alerts) return;
+    const t = (wxHour ?? hourNow()) * 3600000;
+    const when = (v: string | null) => (v ? new Date(v).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
+    const rank = (p: any) =>
+      (/Warning/.test(p.event) ? 30 : /Watch/.test(p.event) ? 20 : /Advisory/.test(p.event) ? 10 : 0) +
+      (({ Extreme: 4, Severe: 3, Moderate: 2, Minor: 1 } as Record<string, number>)[p.severity] || 0);
+    const live = fc.features
+      .filter((f: any) => {
+        const on = Date.parse(f.properties.onset || '') || 0, end = Date.parse(f.properties.ends || '') || Infinity;
+        return on <= t + 3599999 && t < end;
       })
-      .catch((e) => status('wind', { state: 'error', detail: String(e.message || e) }));
+      .sort((x: any, y: any) => rank(x.properties) - rank(y.properties)); // warnings drawn on top
+    setLayer(
+      'alerts',
+      L.geoJSON({ type: 'FeatureCollection', features: live } as any, {
+        style: (f) => ({ color: f?.properties?.color, weight: 2, fillColor: f?.properties?.color, fillOpacity: 0.12 }),
+        onEachFeature: (f, l) =>
+          l.bindTooltip(
+            `<div class="text-xs" style="width:300px;white-space:normal"><b>${esc(f.properties.event)}</b> <span style="opacity:.7">(${esc(f.properties.severity)})</span><br/>` +
+              `${esc(when(f.properties.onset))} – ${esc(when(f.properties.ends))}<br/>` +
+              `<span style="opacity:.8">${esc(f.properties.area)}</span><br/><span style="opacity:.7">${esc(f.properties.sender)} · National Weather Service</span></div>`,
+            { sticky: true },
+          ),
+      }),
+    );
+    const events = new Map<string, string>();
+    for (const f of live) events.set(f.properties.event, f.properties.color);
+    const n = new Set(live.map((f: any) => f.properties.headline)).size;
+    const at = wxHour == null ? 'now' : `at ${new Date(t).toLocaleString([], { weekday: 'short', hour: 'numeric' })}`;
+    status('alerts', {
+      state: fc.stale ? 'info' : 'ok',
+      detail:
+        (fc.stale ? `api.weather.gov is not answering; alerts as of ${new Date(fc.fetched_utc).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. ` : '') +
+        `${n} of ${fc.alert_count} active or upcoming California alerts in effect ${at}. Past alerts that have expired are not in the NWS feed.`,
+      swatches: [...events].map(([label, color]) => ({ label, color })),
+    });
+  };
+  useEffect(() => {
+    if (!map) return;
+    setLayer('alerts', null);
+    if (!layers.alerts) return status('alerts', { state: 'off' });
+    status('alerts', { state: 'loading' });
+    let cancel = () => {};
+    const load = () => {
+      cancel();
+      cancel = swrJSON('/api/weather/alerts?area=CA', 5 * MIN, (d) => {
+        alertsRef.current = d.alerts;
+        drawAlerts();
+      }, fail('alerts'));
+    };
+    load();
+    const refresh = setInterval(load, 5 * MIN);
+    return () => {
+      cancel();
+      clearInterval(refresh);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, layers.wind, selectedRegion]);
+  }, [map, layers.alerts]);
+  useEffect(() => {
+    drawAlerts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wxHour]);
 
   // ---------------------------------------------------------------- Building footprints (viewport, zoom >= 15)
   useEffect(() => {

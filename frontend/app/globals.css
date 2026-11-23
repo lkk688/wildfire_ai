@@ -51,3 +51,17 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.8);
 }
+
+/* Weather time slider: transparent native range with a round thumb (track drawn by TimeSlider) */
+.wx-range { -webkit-appearance: none; appearance: none; background: transparent; }
+.wx-range:focus { outline: none; }
+.wx-range::-webkit-slider-runnable-track { height: 24px; background: transparent; }
+.wx-range::-moz-range-track { height: 24px; background: transparent; }
+.wx-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 16px; height: 16px; margin-top: 4px; border-radius: 9999px;
+  background: #fff; border: 3px solid #0ea5e9; box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.25);
+}
+.wx-range::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 9999px; background: #fff; border: 3px solid #0ea5e9;
+}
+.wx-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.6); }

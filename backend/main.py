@@ -10,11 +10,13 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend import live_sources as live
 from backend import heldout
+from backend import weather_forecast as wx
 from backend.services import GISDataService, STATIC_DIR, REGION_BOUNDS, parse_bbox
 from backend.ai import WildfireAIAgent, AIConfig
 from src.academic_models import (
@@ -39,6 +41,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=2000)  # forecast tiles and GeoJSON compress ~4-5x
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -207,6 +210,22 @@ def get_live_weather(lat: Optional[float] = Query(None), lon: Optional[float] = 
     if lat is None or lon is None:
         lat, lon = REGION_BOUNDS.get(region, REGION_BOUNDS["san_bruno"])["center"]
     return {"success": True, "weather": _live(lambda: gis_service.get_weather(lat, lon))}
+
+
+@app.get("/api/weather/forecast-tile")
+def get_forecast_tile(step: float = Query(...), ti: int = Query(...), tj: int = Query(...)):
+    """Hourly HRRR (past 24 h + forecast) on one fixed map tile: temperature, humidity, wind, gusts, precipitation, cloud."""
+    if step not in wx.STEPS:
+        raise HTTPException(status_code=400, detail=f"step must be one of {wx.STEPS}")
+    if abs(ti * wx.TILE * step) > 90 or abs(tj * wx.TILE * step) > 180:
+        raise HTTPException(status_code=400, detail="tile outside the globe")
+    return {"success": True, "tile": _live(lambda: wx.forecast_tile(step, ti, tj))}
+
+
+@app.get("/api/weather/alerts")
+def get_weather_alerts(area: str = Query("CA", pattern="^[A-Z]{2}$")):
+    """Active NWS watches, warnings and advisories for a state, as polygons (forecast zones or storm polygons)."""
+    return {"success": True, "alerts": _live(lambda: live.nws_alert_areas(area))}
 
 
 @app.get("/api/weather/wind-grid")

@@ -12,6 +12,10 @@ import AICopilotDrawer from './components/AICopilotDrawer';
 import VisionBenchmarkView from './components/VisionBenchmarkView';
 import GuideModal from './components/GuideModal';
 import MapLegend from './components/MapLegend';
+import TimeSlider from './components/TimeSlider';
+import { WeatherStore } from './lib/weatherStore';
+import type { WxVar } from './lib/weatherVars';
+import { REGIONS } from './lib/api';
 import type { LayerToggles } from './components/MapView';
 import type { LayerState } from './lib/api';
 
@@ -42,8 +46,13 @@ export default function Home() {
     fhsz: false,
     wrc: false,
     wind: true,
+    alerts: true,
   });
   const [layerStatus, setLayerStatus] = useState<Record<string, LayerState>>({});
+  // Hourly weather: one tile store for the map layers and the time slider; hour null = now
+  const [wxStore] = useState(() => new WeatherStore());
+  const [wxHour, setWxHour] = useState<number | null>(null);
+  const [wxField, setWxField] = useState<WxVar | 'none'>('none');
   const [opacity, setOpacity] = useState<number>(0.75);
   const [selectedCorridorData, setSelectedCorridorData] = useState<any>(null);
   const [layerStats, setLayerStats] = useState<any>(null);
@@ -157,6 +166,8 @@ export default function Home() {
             onOpenDataCatalog={() => setIsDataCatalogOpen(true)}
             onOpenModelEvaluation={() => setIsModelEvalOpen(true)}
             onSwitchToVision={() => setAppMode('vision')}
+            wxField={wxField}
+            setWxField={setWxField}
           />
 
           {/* Main Interactive Map View */}
@@ -173,9 +184,26 @@ export default function Home() {
               }}
               onLayerStatsUpdate={(stats) => setLayerStats(stats)}
               onLayerStatus={updateStatus}
+              wxStore={wxStore}
+              wxHour={wxHour}
+              wxField={wxField}
             />}
 
-            <MapLegend activeLayer={activeLayer} layers={layers} />
+            {(layers.wind || layers.alerts || wxField !== 'none') && (
+              <TimeSlider
+                store={wxStore}
+                hour={wxHour}
+                setHour={setWxHour}
+                field={wxField}
+                center={{
+                  lat: (REGIONS[selectedRegion] || REGIONS.san_bruno).center[0],
+                  lng: (REGIONS[selectedRegion] || REGIONS.san_bruno).center[1],
+                  name: (REGIONS[selectedRegion] || REGIONS.san_bruno).name.split(' (')[0],
+                }}
+              />
+            )}
+
+            <MapLegend activeLayer={activeLayer} layers={layers} layerStatus={layerStatus} wxField={wxField} />
 
             {/* First-time hint: the point query is the most useful thing on the map */}
             {!selectedCorridorData && !hintDismissed && (
@@ -195,7 +223,7 @@ export default function Home() {
             />
 
             {/* Aggregated Top Risk Factors Bar Chart */}
-            <RiskDriversChart region={selectedRegion} />
+            <RiskDriversChart region={selectedRegion} raised={layers.wind || layers.alerts || wxField !== 'none'} />
           </div>
 
           {/* Multi-Source Data Documentation Modal */}

@@ -103,7 +103,7 @@ A guide opens on the first visit and can be reopened with **Guide** at the top o
 |---|---|---|
 | **The question** | Where could fire start or spread, and what are conditions right now? | Can AI tell from aerial photos which homes burn? |
 | **1** | Pick a region (three Bay Area communities at the wildland edge). | Choose a question: *after the fire* (was this home destroyed?) or *before the fire* (which of two neighbours burned?). |
-| **2** | Switch layers on and off; the legend on the map explains every colour. | Read the scoreboard: one bar per model, scored on every test home. |
+| **2** | Switch layers on and off; the legend on the map explains every colour. For weather, pick a field (temperature, humidity, gusts, rain, cloud, fire weather) and drag the time slider through the past day and the forecast; hover the map for values. | Read the scoreboard: one bar per model, scored on every test home. |
 | **3** | Click any spot for a summary from all sources. | Look at one home's photos, then at each model's answer (green = right, red = wrong). |
 | **4** | Open **Data sources & live status** to see where each number comes from. | Press **Run** to ask a model the same question live. |
 | **5** | Ask the AI copilot; it answers from the same live data. | In the pre-fire pairs, guess first, then press **Reveal**. |
@@ -118,6 +118,10 @@ output of this project's evaluation. If a source is down or has no data, the UI 
 Three regions: San Bruno, San Jose foothills and the Santa Cruz Mountains. **Data sources & live status** checks
 every source when it opens.
 
+Map data is cached twice: the browser keeps every layer it has loaded (memory and IndexedDB), so returning to a
+region or panning back is instant and the copy is refreshed in the background; the server keeps HRRR values per
+grid point in `backend/cache/` and, if a source stops answering, serves the last good values marked with their time.
+
 | Layer / panel | Source (fetched live unless noted) |
 |---|---|
 | Bellwether 1-year / 5-year hazard, risk drivers | Partner GeoTIFFs (local files, pilot area only: about 55% of cells valid; San Jose is not covered) |
@@ -126,7 +130,9 @@ every source when it opens.
 | Historic perimeters (1950+) | CAL FIRE FRAP |
 | Satellite hotspots (24 h) | NASA FIRMS VIIRS public CSVs (S-NPP, NOAA-20, NOAA-21) |
 | Fuel moisture | CDEC RAWS, 10-h fuel sticks, hourly |
-| Weather, wind field, alerts | NOAA HRRR via Open-Meteo; NWS alerts |
+| Current conditions (temperature, humidity, wind at the region centre) | NOAA HRRR 3 km model via Open-Meteo; NWS alerts for that point |
+| Weather layers with time slider (past 24 h to about +46 h): temperature, humidity, gusts, rain, cloud, Fosberg fire-weather index, animated wind | NOAA HRRR via Open-Meteo, hourly, on fixed map tiles (0.03° when zoomed in, up to 2° for the whole state) |
+| Weather watches, warnings, advisories (Red Flag, wind, flood, coastal flood, ...) | National Weather Service api.weather.gov, all of California, drawn on NWS forecast-zone shapes for the hour on the slider; refreshed every 5 min |
 | Terrain slope | USGS 3DEP DEM, slope computed on request |
 | Vegetation (NDVI) | Sentinel-2 via Esri, one dated scene with ≤10% cloud |
 | Fire Hazard Severity Zones | CAL FIRE FHSZ (SRA 2023, LRA 2025) |

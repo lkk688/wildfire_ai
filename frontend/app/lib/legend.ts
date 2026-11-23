@@ -6,6 +6,16 @@
 export type Swatch = { label: string; color: string; shape?: 'box' | 'dot' | 'line' | 'dash' | 'arrow' | 'ring' };
 export type LegendItem = { id: string; title: string; note?: string; swatches: Swatch[] };
 
+// Wind speed classes (mph), shared by the animated wind layer (windParticles.ts) and the legend
+export const WIND_CLASSES: Array<{ max: number; label: string; color: string }> = [
+  { max: 5, label: '< 5 mph', color: '#cbd5e1' },
+  { max: 10, label: '5–10', color: '#7dd3fc' },
+  { max: 20, label: '10–20', color: '#fde047' },
+  { max: 30, label: '20–30', color: '#fb923c' },
+  { max: 40, label: '30–40', color: '#ef4444' },
+  { max: Infinity, label: '≥ 40 mph', color: '#e879f9' },
+];
+
 const BW_COLORS = ['#228B22', '#90EE90', '#FFFF66', '#FFCC00', '#FF8000', '#EE2222', '#9400D3'];
 const BW_NAMES = ['Very Low', 'Low', 'Moderate', 'Significant', 'High', 'Very High', 'Extreme']; // same keys as the backend stats
 const BW_CUTS: Record<'1yr' | '5yr', string[]> = {
@@ -82,8 +92,15 @@ export const LAYER_LEGENDS: Record<string, LegendItem> = {
   },
   wind: {
     id: 'wind',
-    title: 'Wind now (arrows point downwind)',
-    swatches: [{ label: 'HRRR 10 m wind', color: '#60a5fa', shape: 'arrow' }],
+    title: 'Wind at the slider hour (streaks flow downwind)',
+    note: 'NOAA HRRR model, 10 m above ground',
+    swatches: WIND_CLASSES.map((c) => ({ label: c.label, color: c.color, shape: 'line' as const })),
+  },
+  alerts: {
+    id: 'alerts',
+    title: 'NWS watches, warnings, advisories',
+    note: 'In effect at the slider hour',
+    swatches: [],
   },
   slope: {
     id: 'slope',
@@ -110,4 +127,4 @@ export const LAYER_LEGENDS: Record<string, LegendItem> = {
   },
 };
 
-export const LEGEND_ORDER = ['wrc', 'fhsz', 'perimeters', 'hotspots', 'fuel', 'wind', 'slope', 'ndvi', 'buildings'];
+export const LEGEND_ORDER = ['alerts', 'wrc', 'fhsz', 'perimeters', 'hotspots', 'fuel', 'wind', 'slope', 'ndvi', 'buildings'];

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { BarChart2, ChevronDown, ChevronUp } from 'lucide-react';
 import { getJSON } from '../lib/api';
 
-export default function RiskDriversChart({ region }: { region: string }) {
+export default function RiskDriversChart({ region, raised = false }: { region: string; raised?: boolean }) {
   const [data, setData] = useState<any>(null);
   const [open, setOpen] = useState(false);
 
@@ -34,7 +34,7 @@ export default function RiskDriversChart({ region }: { region: string }) {
   );
 
   return (
-    <div className="absolute bottom-5 left-16 w-96 glass-panel rounded-2xl p-4 shadow-2xl z-20 border border-slate-800">
+    <div className={`absolute ${raised ? 'bottom-[104px]' : 'bottom-5'} left-16 w-96 glass-panel rounded-2xl p-4 shadow-2xl z-20 border border-slate-800`}>
       <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between text-xs font-semibold text-slate-400 uppercase tracking-wider">
         <span className="flex items-center gap-2"><BarChart2 className="w-4 h-4 text-orange-400" /> Bellwether risk factors in this region</span>
         {open ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
