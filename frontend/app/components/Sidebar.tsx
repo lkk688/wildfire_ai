@@ -6,6 +6,7 @@ import {
   AlertTriangle, CheckCircle2, Loader2, Info, Thermometer,
 } from 'lucide-react';
 import type { LayerToggles } from './MapView';
+import { bellwetherCategories } from '../lib/legend';
 import { LayerState, REGIONS, getJSON } from '../lib/api';
 
 interface SidebarProps {
@@ -100,16 +101,9 @@ export default function Sidebar({
   activeLayer, setActiveLayer, selectedRegion, setSelectedRegion, layers, setLayers, layerStatus, opacity, setOpacity,
   layerStats, onOpenDataCatalog, onOpenModelEvaluation, onSwitchToVision,
 }: SidebarProps) {
-  // Bellwether release categories (1-year model cut-offs used for the overlay)
-  const riskCategories = [
-    { name: 'Very Low', range: '< 0.004%', color: '#228B22' },
-    { name: 'Low', range: '0.004% - 0.02%', color: '#90EE90' },
-    { name: 'Moderate', range: '0.02% - 0.10%', color: '#FFFF66' },
-    { name: 'Significant', range: '0.10% - 0.40%', color: '#FFCC00' },
-    { name: 'High', range: '0.40% - 0.67%', color: '#FF8000' },
-    { name: 'Very High', range: '0.67% - 1.33%', color: '#EE2222' },
-    { name: 'Extreme', range: '> 1.33%', color: '#9400D3' },
-  ];
+  // Bellwether categories for the model shown on the map (same cut-offs as the overlay)
+  const bwWhich: '1yr' | '5yr' = activeLayer === '5yr' ? '5yr' : '1yr';
+  const riskCategories = bellwetherCategories(bwWhich);
 
   return (
     <aside className="w-96 glass-panel h-screen flex flex-col z-20 shadow-2xl overflow-y-auto border-r border-slate-800">
@@ -123,6 +117,10 @@ export default function Sidebar({
             <p className="text-xs text-orange-400 font-medium">Live public data · research prototype</p>
           </div>
         </div>
+        <p className="text-[12px] text-slate-300 leading-snug">
+          Wildfire hazard and today&apos;s fire conditions for three Bay Area communities at the edge of wildland. Pick a region,
+          switch layers on, and click the map.
+        </p>
 
         <div className="mt-3">
           <label className="text-[11px] font-semibold uppercase text-slate-400 tracking-wider mb-1 flex items-center gap-1.5">
@@ -159,6 +157,9 @@ export default function Sidebar({
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">
             <Layers className="w-4 h-4 text-orange-400" /> Bellwether hazard model (100 m)
           </div>
+          <p className="text-[11px] text-slate-400 -mt-1 mb-2 leading-snug">
+            Chance that each 100 m cell burns within the next 1 or 5 years. Partner model, available in the pilot area only.
+          </p>
           <div className="grid grid-cols-3 gap-2">
             {([['1yr', '1-year'], ['5yr', '5-year'], ['none', 'Off']] as const).map(([k, label]) => (
               <button
@@ -215,7 +216,7 @@ export default function Sidebar({
 
         <div className="space-y-1.5">
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-            <ShieldAlert className="w-4 h-4 text-orange-400" /> Bellwether 1-year categories
+            <ShieldAlert className="w-4 h-4 text-orange-400" /> Bellwether {bwWhich === '5yr' ? '5-year' : '1-year'} categories
           </div>
           <div className="space-y-0.5 bg-slate-900/60 p-2 rounded-xl border border-slate-800/80 text-xs">
             {riskCategories.map((cat) => {

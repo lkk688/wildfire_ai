@@ -4,6 +4,11 @@ Research code for evaluating whether vision-language models (VLMs) can tell, fro
 **will be** destroyed in a wildfire (pre-fire) and which **were** destroyed (post-fire), against real outcomes
 from CAL FIRE damage inspections (DINS).
 
+[![How to use the web demo: 48-second highlights](docs/assets/tutorial.gif)](docs/assets/tutorial.mp4)
+
+*How to use the web demo, recorded from the running app. **[Watch the full 3-minute tutorial](docs/assets/tutorial.mp4)**
+(captions, no audio). Details in [Web demo](#web-demo).*
+
 The repository has two parts:
 
 1. **The research pipeline** (`scripts/`, `src/vlm_benchmark/imagery_provenance.py`). Every number it produces
@@ -90,17 +95,25 @@ only from `output/`, never typed in by hand.
 
 ## Web demo
 
-[![Demo video (3 min, 22 Nov 2026)](docs/assets/demo_2026-11-22_vlm.jpg)](docs/assets/demo_2026-11-22.mp4)
+**[Tutorial video (3 min)](docs/assets/tutorial.mp4)**: every step below, recorded from the running app.
 
-**[Watch the 3-minute walkthrough](docs/assets/demo_2026-11-22.mp4)** (recorded 22 Nov 2026 from the running app;
-captions only, no audio).
+A guide opens on the first visit and can be reopened with **Guide** at the top of the page.
+
+| | Risk map | VLM evaluation |
+|---|---|---|
+| **The question** | Where could fire start or spread, and what are conditions right now? | Can AI tell from aerial photos which homes burn? |
+| **1** | Pick a region (three Bay Area communities at the wildland edge). | Choose a question: *after the fire* (was this home destroyed?) or *before the fire* (which of two neighbours burned?). |
+| **2** | Switch layers on and off; the legend on the map explains every colour. | Read the scoreboard: one bar per model, scored on every test home. |
+| **3** | Click any spot for a summary from all sources. | Look at one home's photos, then at each model's answer (green = right, red = wrong). |
+| **4** | Open **Data sources & live status** to see where each number comes from. | Press **Run** to ask a model the same question live. |
+| **5** | Ask the AI copilot; it answers from the same live data. | In the pre-fire pairs, guess first, then press **Reveal**. |
 
 **Rule: nothing is mocked.** Every value on screen is either fetched live from a public service or read from a stored
 output of this project's evaluation. If a source is down or has no data, the UI says so; it never shows a placeholder.
 
 ### View 1: risk map (live data)
 
-![Risk map](docs/assets/demo_2026-11-22_map.jpg)
+![Risk map: USDA burn probability, CAL FIRE hazard zones and a point summary](docs/assets/tutorial_map.jpg)
 
 Three regions: San Bruno, San Jose foothills and the Santa Cruz Mountains. **Data sources & live status** checks
 every source when it opens.
@@ -134,6 +147,8 @@ the app converts it back (the published range is 0–0.14 per year).
 
 ### View 2: VLM evaluation (held-out fires)
 
+![VLM evaluation: one held-out home before and after the French Fire, with every model's answer](docs/assets/tutorial_vlm.jpg)
+
 The view browses the **2024–25 held-out test fires**, which no model was trained or tuned on:
 
 - **Post-fire (T3):** 1,246 buildings, with pre- and post-fire Wayback crops whose capture dates are verified.
@@ -160,6 +175,9 @@ about 100 m.
 
 - **VLM evaluation on held-out fires**: per-case outputs of every model, verified imagery, and a live re-run.
 - **USDA Wildfire Risk to Communities** burn probability as a public, nationwide hazard layer.
+- **Easier to read for first-time visitors**: a guide on the first visit, a map legend that follows the layers you
+  switch on, a "click anywhere" hint, and a plain-language explanation of each VLM task and its result.
+- **Tutorial video** (`scripts/demo/record_tutorial.py`, `make_readme_media.py`).
 - **AI copilot** answers render as formatted text (lists, tables, bold).
 - The older 50-case development-set endpoints (`/api/vlm/benchmark/results`, `/metrics`, `/api/vlm/predict`) are
   retired and return HTTP 410.

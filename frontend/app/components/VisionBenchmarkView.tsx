@@ -23,6 +23,11 @@ import {
   FileText,
   EyeOff,
   Info,
+  HelpCircle,
+  Lightbulb,
+  ListChecks,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------- types
@@ -323,12 +328,14 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
         </div>
       </header>
 
+      <VlmIntro task={task} summary={summary} />
+
       {/* Task tabs */}
       <nav className="px-6 pt-3 flex gap-2 flex-wrap">
         {(
           [
-            { k: 't3', t: 'Post-fire: was this home destroyed?', s: `T3 · ${summary?.t3.n ?? '…'} buildings` },
-            { k: 't2', t: 'Pre-fire: which of two neighbours burned?', s: `T2 · ${summary?.t2.n ?? '…'} same-fire pairs` },
+            { k: 't3', t: 'After the fire: was this home destroyed?', s: `T3 · ${summary?.t3.n ?? '…'} homes · photos before and after` },
+            { k: 't2', t: 'Before the fire: which of two neighbours burned?', s: `T2 · ${summary?.t2.n ?? '…'} same-fire pairs · photos before only` },
           ] as const
         ).map((x) => (
           <button
@@ -350,12 +357,18 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
           <div className="flex items-baseline justify-between flex-wrap gap-2 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              {task === 't3' ? 'AUROC on the 2024–25 test fires (0.5 = chance)' : 'Pair accuracy on 403 same-fire pairs (0.5 = chance)'}
+              {task === 't3'
+                ? 'Scoreboard · AUROC on the 2024–25 test fires (1 = perfect, 0.5 = coin flip)'
+                : `Scoreboard · share of ${summary?.t2.n ?? ''} pairs where the model picked the home that burned (0.5 = coin flip)`}
             </span>
             <span className="text-[11px] text-slate-400">
               {task === 't3'
                 ? 'Damage is easy to see after the fire: trained 4B/9B models match the best zero-shot model.'
-                : 'Before the fire, no model gets much above chance once exposure is controlled; metadata alone gets .578.'}
+                : `Before the fire, no model gets much above chance once exposure is controlled${
+                    models.find((m) => m.key === 'sonnet_meta')?.pair_accuracy != null
+                      ? `; metadata alone (no image) gets ${f3(models.find((m) => m.key === 'sonnet_meta')?.pair_accuracy)}`
+                      : ''
+                  }.`}
             </span>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-1">
@@ -796,5 +809,106 @@ function LiveCard({ task, live, c, reveal, showPrompt, setShowPrompt }: { task: 
       </button>
       {showPrompt && <pre className="p-2 rounded-lg bg-slate-950 text-[10px] text-slate-300 max-h-60 overflow-y-auto whitespace-pre-wrap border border-slate-800">{live.prompt}</pre>}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- plain-language guide for first-time visitors
+
+function VlmIntro({ task, summary }: { task: Task; summary: Summary | null }) {
+  const KEY = 'wildfire_ai_vlm_intro_hidden';
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    try {
+      setHidden(localStorage.getItem(KEY) === '1');
+    } catch {
+      /* storage unavailable: keep the guide open */
+    }
+  }, []);
+  const toggle = () => {
+    setHidden(!hidden);
+    try {
+      localStorage.setItem(KEY, hidden ? '0' : '1');
+    } catch {
+      /* ignore */
+    }
+  };
+  // Best score for this task, computed from the stored per-case outputs (never typed in).
+  const ms = summary ? summary[task].models : [];
+  const metric = (m: ModelInfo) => (task === 't3' ? m.auroc : m.pair_accuracy) ?? 0;
+  const imageRuns = ms.filter((m) => m.input !== 'metadata only (no image)');
+  const best = imageRuns.length ? imageRuns.reduce((a, m) => (metric(m) > metric(a) ? m : a)) : null;
+  const meta = ms.find((m) => m.input === 'metadata only (no image)');
+
+  if (hidden)
+    return (
+      <div className="px-6 pt-3">
+        <button onClick={toggle} className="text-xs text-sky-300 hover:text-sky-200 flex items-center gap-1 cursor-pointer">
+          <HelpCircle className="w-3.5 h-3.5" /> How to read this page <ChevronDown className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+
+  return (
+    <section id="vlm-intro" className="px-6 pt-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 p-3.5">
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-sky-300">
+            <HelpCircle className="w-3.5 h-3.5" /> The question
+          </div>
+          <p className="mt-1.5 text-[13px] text-slate-200 leading-snug">
+            {task === 't3' ? (
+              <>
+                <b>After a fire</b>, an AI model looks at an aerial photo of a home: <b>was it destroyed?</b>{' '}The right answer comes
+                from CAL FIRE&apos;s inspection of that home.
+              </>
+            ) : (
+              <>
+                <b>Before a fire</b>, the model sees photos of <b>two neighbouring homes</b>. Both were in the same fire and exactly one
+                was destroyed: <b>which one?</b>{' '}Same fire, weather and timing, so only the building and its yard differ.
+              </>
+            )}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-3.5">
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-300">
+            <ListChecks className="w-3.5 h-3.5" /> How to read this page
+          </div>
+          <ol className="mt-1.5 space-y-1 text-[12px] text-slate-300 leading-snug list-decimal list-inside">
+            <li><b>Scoreboard</b>: one bar per model, scored on every test case.</li>
+            <li><b>Photos</b> (left): {task === 't3' ? 'one test home, before and after the fire.' : 'the two homes, A and B, as the model saw them.'}</li>
+            <li>
+              <b>Model answers</b> (right): {task === 't3' ? 'how sure each model is that the home was destroyed' : 'which home each model picked'};{' '}
+              <CheckCircle2 className="inline w-3.5 h-3.5 text-emerald-400" /> right, <XCircle className="inline w-3.5 h-3.5 text-rose-400" /> wrong.
+              {task === 't2' && ' Press Reveal to see which one burned.'}
+            </li>
+            <li>Use the arrows to browse; <b>Run</b> asks a model again, live.</li>
+          </ol>
+        </div>
+        <div className={`rounded-2xl border p-3.5 ${task === 't3' ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+          <div className={`flex items-center justify-between text-xs font-bold uppercase tracking-wider ${task === 't3' ? 'text-emerald-300' : 'text-amber-300'}`}>
+            <span className="flex items-center gap-1.5"><Lightbulb className="w-3.5 h-3.5" /> What it shows</span>
+            <button onClick={toggle} className="normal-case font-medium text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-0.5 cursor-pointer">
+              Hide guide <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {best ? (
+            task === 't3' ? (
+              <p className="mt-1.5 text-[13px] text-slate-200 leading-snug">
+                <b>Damage is easy to see after a fire.</b> The best model scores <b className="text-emerald-300">{f3(metric(best))}</b> AUROC
+                ({best.label}, {best.input}). AUROC 1 means every destroyed home is ranked above every surviving one; 0.5 is a coin flip.
+              </p>
+            ) : (
+              <p className="mt-1.5 text-[13px] text-slate-200 leading-snug">
+                <b>Before a fire, the photos say little.</b> The best model picks the home that burned in{' '}
+                <b className="text-amber-300">{Math.round(metric(best) * 100)}%</b> of pairs ({best.label}); a coin flip gets 50%
+                {meta && meta.pair_accuracy != null ? `. ${meta.label} given only the building records, no photo, gets ${Math.round(meta.pair_accuracy * 100)}%` : ''}.
+              </p>
+            )
+          ) : (
+            <p className="mt-1.5 text-[13px] text-slate-400">Loading results…</p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
