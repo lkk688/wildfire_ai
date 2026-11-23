@@ -42,8 +42,8 @@ T3_VLM = [
     ("qwen35_4b_post", "Qwen3.5-4B (zero-shot)", "pf_test_qwen35_4b_nothink", "postfire_image"),
 ]
 T3_TRAINED = [
-    ("lora_4b", "Qwen3.5-4B + LoRA (trained on 2015-23 fires)", "sft_Qwen3.5-4B"),
-    ("lora_9b", "Qwen3.5-9B + LoRA (trained on 2015-23 fires)", "sft_Qwen3.5-9B"),
+    ("lora_4b", "Qwen3.5-4B + LoRA (trained on 2019-23 fires)", "sft_Qwen3.5-4B"),
+    ("lora_9b", "Qwen3.5-9B + LoRA (trained on 2019-23 fires)", "sft_Qwen3.5-9B"),
 ]
 T3_LP = [
     ("dinov2_post", "DINOv2-base linear probe", "lp_post facebook/dinov2-base", "postfire_image"),

@@ -28,6 +28,7 @@ import {
   ListChecks,
   ChevronUp,
   ChevronDown,
+  ExternalLink,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------- types
@@ -487,6 +488,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
               <T2Images c={cur as T2Case} reticle={reticle} reveal={reveal} />
             )}
             <CaseFacts task={task} c={cur} reveal={reveal} setReveal={setReveal} />
+            <StreetLevel task={task} c={cur} reveal={reveal} />
           </div>
 
           {/* Right: stored outputs + live re-run */}
@@ -547,7 +549,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
       )}
 
       {showSources && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowSources(false)}>
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[2000] flex items-center justify-center p-4" onClick={() => setShowSources(false)}>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 space-y-3 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2 text-white font-bold text-base">
@@ -560,7 +562,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
             </div>
             {[
               ['Labels', 'CAL FIRE Damage Inspection (DINS) records. Destroyed = Destroyed (>50%) or Major (26-50%); otherwise survived.'],
-              ['Splits', 'By fire event and forward in time: models are trained or tuned on 2015-23 fires and tested on 2024-25 fires, with a 100 m buffer between splits.'],
+              ['Splits', 'By fire event and forward in time: models are trained or tuned on 2019-23 fires and tested on 2024-25 fires, with a 100 m buffer between splits.'],
               ['Imagery', 'Esri World Imagery Wayback crops (zoom 18, 512 px, ~150 m across). The capture date at each building is read from the Wayback metadata. Pre-fire = newest capture before the fire start; post-fire = earliest capture within 365 days after. Unverifiable crops are dropped, never replaced.'],
               ['T3 (post-fire)', 'The model sees the post-fire crop (or pre + post) and gives p(destroyed). Zero-shot runs: scripts/eval/run_vlm_conditions.py (Claude on a fixed 400-building subset). Qwen3.5 LoRA: scripts/train/sft_postfire_qwen.py. DINOv2 probe: frozen encoder + logistic regression.'],
               ['T2 (pre-fire pairs)', 'Two homes 15-100 m apart in the same fire, exactly one destroyed. Same fire, weather and timing, so the pair isolates what is visible on the building and yard. scripts/eval/run_vlm_pairs.py; the A/B order is seeded and shown here exactly as the model saw it.'],
@@ -611,6 +613,61 @@ function T2Images({ c, reticle, reveal }: { c: T2Case; reticle: boolean; reveal:
     <div className="grid grid-cols-2 gap-3">
       <Crop gid={a.global_id} epoch="pre" reticle={reticle} badge={<CaptureBadge kind="pre" date={a.pre.capture_date} />} label={tag(a, 'A')} />
       <Crop gid={b.global_id} epoch="pre" reticle={reticle} badge={<CaptureBadge kind="pre" date={b.pre.capture_date} />} label={tag(b, 'B')} />
+    </div>
+  );
+}
+
+// Google Street View at the case location. Optional embedded panorama: set NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY at build
+// time (a Maps Embed API key, restricted to this site). Without it, a link opens Street View on Google Maps.
+const SV_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY || '';
+
+function StreetLevel({ task, c, reveal }: { task: Task; c: T3Case | T2Case; reveal: boolean }) {
+  const lat = task === 't3' ? (c as T3Case).lat3 : (c as T2Case).destroyed.lat3;
+  const lon = task === 't3' ? (c as T3Case).lon3 : (c as T2Case).destroyed.lon3;
+  const [open, setOpen] = useState(false);
+  if (lat == null || lon == null) return null;
+  const hidden = task === 't2' && !reveal; // a street photo taken after the fire would give the answer away
+  const href = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
+  return (
+    <div id="street-level" className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h3 className="text-sm font-bold text-white">Street-level view (Google Street View)</h3>
+          <span className="text-[11px] text-slate-400">For people only: no model saw these photos.</span>
+        </div>
+        {!hidden && (
+          <div className="flex items-center gap-3">
+            {SV_KEY && (
+              <button onClick={() => setOpen(!open)} className="text-[11px] font-semibold text-purple-200 hover:text-white cursor-pointer">
+                {open ? 'Hide panorama' : 'Show panorama here'}
+              </button>
+            )}
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 flex items-center gap-1">
+              <ExternalLink className="w-3 h-3" /> Open Street View here
+            </a>
+          </div>
+        )}
+      </div>
+      {hidden ? (
+        <p className="text-[11px] text-slate-400">Available after <b className="text-slate-300">Reveal</b>: Google&apos;s photo may have been taken after the fire and would show which home burned.</p>
+      ) : (
+        <>
+          {SV_KEY && open && (
+            <iframe
+              title="Google Street View near this case"
+              src={`https://www.google.com/maps/embed/v1/streetview?key=${SV_KEY}&location=${lat},${lon}&radius=150&fov=90`}
+              className="w-full h-72 rounded-xl border border-slate-700"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
+          )}
+          <p className="text-[11px] text-slate-400 leading-snug">
+            Coordinates are rounded to about 100 m, so Street View opens near the home, not necessarily facing it. Check
+            the capture date Google shows: before {c.fire_start} it shows the street before the fire; after, it may show the damage.
+          </p>
+        </>
+      )}
     </div>
   );
 }

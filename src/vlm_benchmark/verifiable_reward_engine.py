@@ -1,6 +1,6 @@
 """
-NOT A VERIFIABLE REWARD (audit 2026-10-22): a keyword-matching heuristic with hard-coded 'physics' rules; it failed
-10/10 reliability probes (docs/EVIDENCE_STATUS.md). Do not use it as a training reward.
+NOT A VERIFIABLE REWARD: a keyword-matching heuristic with hard-coded 'physics' rules; it failed 10/10 adversarial
+reliability probes (negation, unknown labels, keyword spam). Do not use it as a training reward.
 
 Verifiable Physical Reward Engine for Wildfire VLM Reasoning (RLVR / GRPO)
 Implements verifiable multi-objective physical reward functions to eliminate

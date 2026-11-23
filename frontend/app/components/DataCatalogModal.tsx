@@ -34,7 +34,7 @@ export default function DataCatalogModal({ isOpen, onClose, region = 'san_bruno'
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
       <div className="glass-panel w-full max-w-4xl max-h-[85vh] rounded-3xl p-6 shadow-2xl border border-slate-700/80 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">

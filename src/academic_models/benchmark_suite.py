@@ -424,7 +424,7 @@ class AcademicBenchmarkRunner:
                 "Synthetic mechanism demonstration only: rows 1-2 and the time-of-ignition errors are constructed "
                 "from the ground-truth labels, so no accuracy, false-alarm or MAE difference in this table is an "
                 "empirical result.",
-                "Empirical, leakage-controlled evaluations live in output/experiments/ (see docs/EVIDENCE_STATUS.md).",
+                "Empirical, leakage-controlled evaluations live in output/experiments/ (see docs/RESULTS.md).",
             ],
         }
 

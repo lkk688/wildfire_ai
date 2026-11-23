@@ -41,7 +41,7 @@ export default function ModelEvaluationModal({ isOpen, onClose, selectedRegion }
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md">
       <div className="glass-panel w-full max-w-6xl max-h-[92vh] rounded-3xl p-6 shadow-2xl border border-slate-700/80 flex flex-col overflow-hidden bg-slate-900/95 text-slate-100">
         <div className="flex items-start justify-between pb-4 border-b border-slate-800 shrink-0">
           <div>

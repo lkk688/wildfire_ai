@@ -41,7 +41,18 @@ export default function CorridorMetricsCard({ data, onClose }: CorridorMetricsCa
           <div className="p-2 rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/30"><Flame className="w-5 h-5" /></div>
           <div>
             <h3 className="font-bold text-sm text-slate-100">Location summary</h3>
-            <p className="text-xs text-slate-400 font-mono">{center.lat.toFixed(5)}, {center.lng.toFixed(5)}</p>
+            <p className="text-xs text-slate-400 font-mono">
+              {center.lat.toFixed(5)}, {center.lng.toFixed(5)}{' '}
+              <a
+                id="open-street-view"
+                href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${center.lat.toFixed(5)},${center.lng.toFixed(5)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-sans text-sky-300 hover:text-sky-200 underline"
+              >
+                Street View
+              </a>
+            </p>
           </div>
         </div>
         <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"><X className="w-4 h-4" /></button>
