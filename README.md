@@ -110,7 +110,8 @@ homes of a fire and is tested on others from the same fire, pre-fire scores rise
 later fires removes this inflation.
 
 The tests behind findings 1 and 2 were registered before they were run (see [section 7](#7-repository-documents-and-licences)).
-All numbers, with confidence intervals and further baselines: **[docs/RESULTS.md](docs/RESULTS.md)**.
+How the ground truth, test sets, prompts and scoring work in detail, and all 13 experiments: [section 4.3](#43-ai-evaluation-browser).
+All numbers with confidence intervals: **[docs/RESULTS.md](docs/RESULTS.md)**.
 
 ## 4. The web demo
 
@@ -207,13 +208,108 @@ instead of 100–170 MB) and stores them on a 3 km grid over California
 ### 4.3 AI evaluation browser
 
 This view (the **VLM Evaluation** tab at the top of the page) shows the evaluation from
-[sections 2 and 3](#2-how-we-test-it) home by home. Every case is a home from a
-2024–25 test fire, and every answer shown is the model's stored answer from the evaluation run.
-
-**The scoreboard** at the top shows each model's score on the whole test set, next to a plain-language explanation
-of the question and how to read the page.
+[sections 2 and 3](#2-how-we-test-it) home by home: every test home, the true outcome, and every model's answer.
+This section explains in detail what the true outcome is, how the test sets were built, what each model was asked,
+how its answers were scored, and which experiments were run.
 
 ![The after-the-fire question, how to read the page, and the scoreboard](docs/assets/ui_vlm_scoreboard.jpg)
+
+#### Ground truth: CAL FIRE damage inspections
+
+After a fire, CAL FIRE inspection teams visit every structure inside the fire area and record its damage in the
+Damage Inspection database (DINS), with the structure's location, type and year built. DINS uses five damage levels:
+
+| DINS damage level | Meaning | Label used here |
+|---|---|---|
+| No Damage | No visible damage | survived |
+| Affected | 1–10% of the structure damaged | survived |
+| Minor | 10–25% damaged | survived |
+| Major | 25–50% damaged | **destroyed** |
+| Destroyed | more than 50% damaged | **destroyed** |
+
+The inspector's label is the *ground truth*: a model's answer counts as right when it matches it. Only residential
+structures are used. Each home's DINS location is the centre of its photo, and the model is told that the home to
+judge is at the centre. Two known limits of this ground truth: an inspection point can sit slightly off the building,
+and the line between Minor and Major is a judgement call by the inspector.
+
+#### The test sets
+
+All test homes come from fires in 2024–25 that no model was trained or tuned on, and both of their photos have a
+verified capture date (see [section 2](#2-how-we-test-it)).
+
+- **T3, after the fire: 1,246 homes from 83 fires.** Homes were drawn at random, at most 40 per fire and damage
+  level, so that a few very large fires do not dominate. 319 were destroyed (227 Destroyed, 92 Major) and 927 survived
+  (658 No Damage, 151 Affected, 118 Minor). The post-fire photo was taken a median of 77 days after the fire started
+  (at most 347 days), at about 0.34 m per pixel.
+- **T2, before the fire: 403 pairs from 13 fires.** Each pair is a destroyed home and a surviving home from the same
+  fire, 16–99 m apart (median 74 m). Each destroyed home is used once, and no fire contributes more than 85 pairs. The
+  pre-fire photos were taken a median of 461 days before the fire.
+- **T1, before the fire: 238 single homes from 8 fires**, half destroyed and half survived.
+- **Replication set:** 289 pairs and a matching set of single homes from separate 2019–23 fires, kept aside to repeat
+  the before-the-fire tests.
+
+#### What each model is given and asked
+
+Every model sees the same prompt for the same task:
+
+- **Context, for every task:** that this is a residential building in a California wildland-urban interface fire
+  which reached the community; the building's structure type and year built; the fire's name, county and start
+  date. No weather is stated.
+- **Photos:** a 512 × 512 pixel crop, about 150 m across, centred on the home. For T3 the model gets the post-fire
+  photo (and is told how many days after the fire it was taken), or the photos before and after. For T2 it gets one
+  pre-fire photo of each home, labelled A and B, and the distance between them; the A/B order was drawn at random once per pair.
+- **Question:** T3 and T1 ask for the probability (0–100) that the building was destroyed, as a JSON answer with up
+  to three pieces of evidence. T2 says that exactly one of the two was destroyed, and asks for the probability that A
+  was the one, with up to three differences.
+
+Zero-shot models are called once per case. The fine-tuned Qwen models and the linear
+probe are trained only on the 1,646 training homes from 2019–23 fires. A fine-tuned model's score is the probability
+it gives to the answer "destroyed" as its first word, rather than a number it writes out (see experiment 3 below).
+Because the Claude API costs money per call, the Claude models answered a fixed subset of 400 T3 homes, drawn at
+random within each fire and outcome; every Claude run used the same 400.
+
+#### How the answers are scored
+
+- **One case:** a model's answer is shown as right (green) when its probability is on the same side of 50% as the
+  inspection: above 50% for a destroyed home, below for a survivor. In a pair it is right when it gives the destroyed
+  home the higher probability.
+- **AUROC (T1, T3):** across all test homes, the chance that the model gives a randomly chosen destroyed home a
+  higher probability than a randomly chosen survivor. It does not depend on where the 50% line falls. 1 is perfect,
+  0.5 is a coin flip.
+- **Pair accuracy (T2):** the share of pairs where the destroyed home got the higher probability; a 50/50 answer
+  counts as half right. 0.5 is a coin flip.
+- **Unreadable answers** (no valid JSON) count as 50%, so a model cannot gain by failing to answer. At most 1.5% of
+  any model's answers were unreadable.
+- **Uncertainty:** 95% confidence intervals come from a bootstrap that resamples whole fires, because homes in the
+  same fire are not independent. Two models are compared on exactly the same homes.
+- **Rules fixed in advance:** for the replication and for the post-fire fine-tuning, the hypotheses, metrics and
+  pass/fail rules were committed to this repository before the runs they judge.
+
+The scoreboard in the browser is recomputed by the server from the same stored per-case answers that the case view
+shows, so every number can be traced to individual answers.
+
+#### The experiments
+
+The browser shows the stored answers for T3 and T2. The table lists every experiment behind the findings; the full
+numbers and confidence intervals are in [docs/RESULTS.md](docs/RESULTS.md).
+
+| # | Experiment | What it tests | Result |
+|---|---|---|---|
+| 1 | Post-fire photo alone vs. photos before and after (T3) | Does seeing the "before" help? | Yes: Claude Sonnet .892 → .936 |
+| 2 | Fine-tuning a 4B and a 9B open model on 1,646 homes (T3) | Can a small open model learn the task? | .644 → .892 (4B) and .903 (9B); ties the linear probe (.881) |
+| 3 | Probability of the first word vs. a written number (T3) | How should a model's answer be read? | Same 4B model: .762 vs .644 |
+| 4 | Four similar labelled examples added to the prompt (T3) | Does showing examples help without training? | No clear gain (+.019 for Qwen, −.012 for Sonnet) |
+| 5 | Five damage levels instead of two (T3) | Can models grade damage? | Hard for every model (macro-F1 .36 at best); Minor and Major are not told apart |
+| 6 | An out-of-state fire: 2021 Marshall Fire, Colorado (T3) | Does it transfer outside California? | All models ≈ .98; too easy to separate the methods |
+| 7 | Photos vs. building records only (T2) | Do the photos add anything? | Claude Sonnet .620 with photos vs .578 without |
+| 8 | The home's own photo vs. another home's photo (T1) | Does the model actually use the photo? | Yes: with the wrong photo Sonnet's AUROC drops by .07 on the test fires and .155 on the separate fires (confirmed) |
+| 9 | A fixed "Red Flag Warning" sentence in the prompt (T1) | Do dramatic prompts bias the answer? | False alarms rise by about 16 percentage points |
+| 10 | Repeating T1/T2 on separate fires, rules fixed in advance | Does the pre-fire result hold? | Sonnet pairs .555; not significantly better than a coin flip after correction |
+| 11 | Measured vegetation and building spacing around each home (T2) | Does an explicit "defensible space" measurement do better? | No: .556 pair accuracy |
+| 12 | The inspectors' own records of roof, vents, siding and decks (T2) | How high could building details go at best? | .63–.65; whether a detail was recorded at all gives .88, but that is a leak, not a signal |
+| 13 | Random home split vs. split by fire and year | Does the way of splitting inflate scores? | Pre-fire AUROC .712 vs .551 |
+
+#### Using the browser
 
 **One case, after the fire (T3).** The photos before and after the fire, with their capture dates; the inspection
 result; each model's answer (green when it agrees with the inspection, red when not); and the evidence the model
