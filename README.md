@@ -4,9 +4,9 @@ Research code for evaluating whether vision-language models (VLMs) can tell, fro
 **will be** destroyed in a wildfire (pre-fire) and which **were** destroyed (post-fire), against real outcomes
 from CAL FIRE damage inspections (DINS).
 
-[![How to use the web demo: 48-second highlights](docs/assets/tutorial.gif)](docs/assets/tutorial.mp4)
+[![How to use the web demo: 1-minute highlights](docs/assets/tutorial.gif)](docs/assets/tutorial.mp4)
 
-*How to use the web demo, recorded from the running app. **[Watch the full 3-minute tutorial](docs/assets/tutorial.mp4)**
+*How to use the web demo, recorded from the running app. **[Watch the full 4-minute tutorial](docs/assets/tutorial.mp4)**
 (captions, no audio). Details in [Web demo](#web-demo).*
 
 The repository has two parts:
@@ -95,7 +95,7 @@ only from `output/`, never typed in by hand.
 
 ## Web demo
 
-**[Tutorial video (3 min)](docs/assets/tutorial.mp4)**: every step below, recorded from the running app.
+**[Tutorial video (4 min)](docs/assets/tutorial.mp4)**: every step below, recorded from the running app.
 
 A guide opens on the first visit and can be reopened with **Guide** at the top of the page.
 
@@ -114,6 +114,8 @@ output of this project's evaluation. If a source is down or has no data, the UI 
 ### View 1: risk map (live data)
 
 ![Risk map: USDA burn probability, CAL FIRE hazard zones and a point summary](docs/assets/tutorial_map.jpg)
+
+![Weather layers: HRRR temperature and animated wind for the hour picked on the time slider](docs/assets/tutorial_weather.jpg)
 
 Three regions: San Bruno, San Jose foothills and the Santa Cruz Mountains. **Data sources & live status** checks
 every source when it opens.
@@ -177,7 +179,11 @@ images. It needs `CLAUDE_API_KEY` on the backend.
 **Privacy.** Street addresses, APNs and assessed values are not sent to the browser, and coordinates are rounded to
 about 100 m.
 
-### What's new (22 Nov 2026)
+### What's new (23 Nov 2026)
+
+- **Weather on the risk map**: hourly NOAA HRRR temperature, humidity, gusts, rain, cloud, a fire-weather index and
+  animated wind for the past 24 h and the forecast, picked on a time slider; NWS watches and warnings (flood, wind,
+  Red Flag) drawn on the map for that hour. Map data is cached in the browser and on the server.
 
 - **VLM evaluation on held-out fires**: per-case outputs of every model, verified imagery, and a live re-run.
 - **USDA Wildfire Risk to Communities** burn probability as a public, nationwide hazard layer.

@@ -53,7 +53,7 @@ INIT_JS = """
 """
 
 CAPTION_JS = """
-([chapter, text, sub]) => {
+([chapter, text, sub, lift]) => {
   let el = document.getElementById('tut-caption');
   if (!el) {
     el = document.createElement('div'); el.id = 'tut-caption';
@@ -64,6 +64,7 @@ CAPTION_JS = """
   }
   if (!text) { el.style.display = 'none'; return; }
   el.style.display = 'block';
+  el.style.bottom = lift ? '170px' : '26px';  // lifted above the weather time slider
   el.innerHTML = (chapter ? '<div style="font:800 12px/1 Inter,system-ui,sans-serif;letter-spacing:.12em;color:#fdba74;margin-bottom:6px">' + chapter + '</div>' : '') +
     text + (sub ? '<div style="font-weight:400;font-size:16px;color:#cbd5e1;margin-top:4px">' + sub + '</div>' : '');
 }
@@ -118,8 +119,8 @@ async def main():
         async def mark(name):
             steps.append({"step": name, "t": round(time.monotonic() - t0, 2)})
 
-        async def cap(chapter="", text="", sub=""):
-            await pg.evaluate(CAPTION_JS, [chapter, text, sub])
+        async def cap(chapter="", text="", sub="", lift=False):
+            await pg.evaluate(CAPTION_JS, [chapter, text, sub, lift])
 
         async def card(title="", lines=()):
             await pg.evaluate(CARD_JS, [title, list(lines)])
@@ -142,7 +143,7 @@ async def main():
         # ================================================================ intro
         await pg.goto(BASE + "/?guide=1", wait_until="domcontentloaded")
         await card("How to use Wildfire AI", [
-            "A 3-minute guide to the two views: the <b>risk map</b> (live public data) and the <b>VLM evaluation</b> (AI models on real fires).",
+            "A short guide to the two views: the <b>risk map</b> (live public data) and the <b>VLM evaluation</b> (AI models on real fires).",
             "Everything you will see is real data from the running app. Nothing is simulated.",
         ])
         await mark("intro")
@@ -157,7 +158,7 @@ async def main():
         await pg.wait_for_timeout(2500)
 
         # ================================================================ risk map
-        await cap("RISK MAP · STEP 1 OF 5", "Pick a region", "Three Bay Area communities at the edge of wildland")
+        await cap("RISK MAP · STEP 1 OF 6", "Pick a region", "Three Bay Area communities at the edge of wildland")
         await mark("map_region")
         await spot("select")
         await move_to(pg.locator("select").first)
@@ -166,11 +167,11 @@ async def main():
         await spot()
         await pg.wait_for_timeout(4500)
 
-        await cap("RISK MAP · STEP 2 OF 5", "Switch layers on and off", "The legend on the map explains every colour. Here: USDA burn probability and CAL FIRE hazard zones")
+        await cap("RISK MAP · STEP 2 OF 6", "Switch layers on and off", "The legend on the map explains every colour. Here: USDA burn probability and CAL FIRE hazard zones")
         await mark("map_layers")
-        await click(pg.get_by_role("button", name="Off"))
+        await click(pg.locator("div.grid-cols-3 > button", has_text="Off"))  # Bellwether off
         await pg.wait_for_timeout(600)
-        for label in ("Satellite hotspots (24 h)", "Wind (HRRR)", "Fuel moisture (RAWS)"):
+        for label in ("Satellite hotspots (24 h)", "Fuel moisture (RAWS)", "Wind, animated", "Watches & warnings"):
             await pg.locator("label", has_text=label).locator("input").uncheck()
         await click(pg.locator("label", has_text="Annual burn probability").locator("input"))
         await pg.wait_for_timeout(4000)
@@ -181,7 +182,7 @@ async def main():
         await click(pg.locator("label", has_text="Fire Hazard Severity Zones").locator("input"))
         await pg.wait_for_timeout(5500)
 
-        await cap("RISK MAP · STEP 3 OF 5", "Click any spot on the map", "You get everything the live sources know about it: weather, hazard, land cover, past fires, slope, buildings")
+        await cap("RISK MAP · STEP 3 OF 6", "Click any spot on the map", "You get everything the live sources know about it: weather, hazard, land cover, past fires, slope, buildings")
         await mark("map_click")
         await pg.mouse.move(1000, 560, steps=20)
         await pg.wait_for_timeout(500)
@@ -200,14 +201,67 @@ async def main():
         await click(pg.locator("button:has(svg.lucide-x)").first)
         await pg.wait_for_timeout(800)
 
-        await cap("RISK MAP · STEP 4 OF 5", "Check where each number comes from", "Data sources & live status tests every source when it opens")
+        # ---------------------------------------------------------------- weather and time slider
+        await cap("RISK MAP · STEP 4 OF 6", "Weather: the past day and the forecast",
+                  "Pick a field in the Weather panel: NOAA HRRR model, hourly, for the whole map", lift=True)
+        await mark("map_weather")
+        for label in ("Annual burn probability", "Fire Hazard Severity Zones"):
+            await pg.locator("label", has_text=label).locator("input").uncheck()
+        await pg.mouse.move(1050, 420, steps=12)
+        await pg.mouse.wheel(0, 60)  # Leaflet: 60 px of wheel = one zoom level -> the Santa Cruz Mountains and the bay
+        await pg.wait_for_timeout(1500)
+        wx = pg.locator("#weather-panel")
+        await wx.scroll_into_view_if_needed()
+        await spot("#weather-panel")
+        await click(wx.locator("button", has_text="Temp"))
+        await click(wx.locator("label", has_text="Wind, animated").locator("input"))
+        await pg.wait_for_timeout(3500)
+        await spot()
+        await pg.wait_for_selector("#time-slider input[type=range]", timeout=60000)
+
+        await cap("RISK MAP · STEP 4 OF 6", "Drag the time slider", "Grey = the past 24 hours, blue = the forecast. The readout shows the values under the pointer", lift=True)
+        await spot("#time-slider")
+        rng = pg.locator("#time-slider input[type=range]")
+        bb = await rng.bounding_box()
+        mn, mx, val = await rng.evaluate("(e) => [Number(e.min), Number(e.max), Number(e.value)]")
+        x0 = bb["x"] + 8 + (bb["width"] - 16) * (val - mn) / (mx - mn)
+        y0 = bb["y"] + 12
+        await pg.mouse.move(x0, y0, steps=20)
+        await pg.mouse.down()
+        await pg.mouse.move(x0 + (bb["width"] - 16) * 15 / (mx - mn), y0, steps=40)
+        await pg.mouse.up()
+        await pg.wait_for_timeout(1500)
+        await spot()
+        await pg.mouse.move(1150, 380, steps=25)
+        await pg.wait_for_timeout(2000)
+        await pg.mouse.move(820, 520, steps=25)
+        await pg.wait_for_timeout(2500)
+
+        await cap("RISK MAP · STEP 4 OF 6", "Press play to watch the next two days", "Wind streaks and colours change hour by hour", lift=True)
+        await click(pg.locator("#time-slider button[aria-label=Play]"))
+        await pg.wait_for_timeout(8000)
+        await click(pg.locator("#time-slider button[aria-label=Pause]"))
+
+        await cap("RISK MAP · STEP 4 OF 6", "Fire weather and official alerts",
+                  "Fosberg index from temperature, humidity and wind; NWS watches and warnings (flood, wind, Red Flag) in effect at that hour", lift=True)
+        await click(wx.locator("button", has_text="Fire wx"))
+        await click(wx.locator("label", has_text="Watches & warnings").locator("input"))
+        await pg.wait_for_timeout(2500)
+        await spot("#map-legend")
+        await pg.mouse.move(980, 430, steps=25)
+        await pg.wait_for_timeout(5000)
+        await spot()
+        await click(pg.locator("#time-slider button", has_text="Now"))
+        await pg.wait_for_timeout(2000)
+
+        await cap("RISK MAP · STEP 5 OF 6", "Check where each number comes from", "Data sources & live status tests every source when it opens")
         await mark("map_sources")
         await click(pg.get_by_role("button", name="Data sources & live status"))
         await pg.wait_for_timeout(8000)
         await click(pg.locator("button:has(svg.lucide-x)").first)
         await pg.wait_for_timeout(800)
 
-        await cap("RISK MAP · STEP 5 OF 5", "Ask the AI copilot", "It answers from the same live data and is told not to invent numbers")
+        await cap("RISK MAP · STEP 6 OF 6", "Ask the AI copilot", "It answers from the same live data and is told not to invent numbers")
         await mark("map_copilot")
         await click(pg.get_by_role("button", name="AI Wildfire Copilot").first)
         await pg.wait_for_timeout(1500)
