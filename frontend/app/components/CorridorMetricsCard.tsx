@@ -83,6 +83,17 @@ export default function CorridorMetricsCard({ data, onClose }: CorridorMetricsCa
             </Row>
           </div>
 
+          <Row icon={<Flame className="w-3.5 h-3.5 text-blue-400" />} title="USDA annual burn probability" source={data.usda_burn_probability ? 'USDA Forest Service, Wildfire Risk to Communities (2024 release; landscape as of 2020)' : err('usda_burn_probability') || 'USDA Wildfire Risk to Communities'}>
+            {data.usda_burn_probability ? (
+              <>
+                <b>{data.usda_burn_probability.pct_per_year.toFixed(2)}%</b> per year
+                {data.usda_burn_probability.one_in_n_years ? <span className="text-slate-400"> (about 1 in {data.usda_burn_probability.one_in_n_years.toLocaleString()} years)</span> : null}
+              </>
+            ) : (
+              <span className="text-slate-500">No value here (water or outside coverage)</span>
+            )}
+          </Row>
+
           <Row icon={<TreePine className="w-3.5 h-3.5 text-emerald-400" />} title={`Land cover within ${Math.round(data.land_cover?.radius_m || data.radius_meters)} m`} source={data.land_cover?.source || err('land_cover')}>
             {data.land_cover ? (
               <>

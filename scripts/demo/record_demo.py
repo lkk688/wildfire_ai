@@ -67,7 +67,7 @@ async def main():
         await pg.goto(BASE + "/", wait_until="domcontentloaded")
         await card("Wildfire AI · demo (22 Nov 2026)", [
             "Two views: a <b>risk map</b> on live public data and a <b>VLM evaluation</b> browser on held-out fires.",
-            "Nothing on screen is mocked: map layers are fetched live from public services, labels come from CAL FIRE damage inspections, and model outputs are the stored runs behind the paper.",
+            "Nothing on screen is mocked: map layers are fetched live from public services, labels come from CAL FIRE damage inspections, and model outputs are the stored runs of our held-out evaluation.",
         ])
         await pg.wait_for_timeout(6500)
         await card()
@@ -76,13 +76,13 @@ async def main():
         await cap("Risk map · San Bruno WUI", "Bellwether hazard (partner raster) · HRRR wind · RAWS fuel moisture · NWS alerts, all fetched live")
         await pg.wait_for_timeout(7000)
 
-        await cap("Data sources & live status", "Each source is checked when the panel opens: 11 public web services, the partner raster and building footprints; no API keys")
+        await cap("Data sources & live status", "Each source is checked when the panel opens: 12 public web services, the partner raster and building footprints; no API keys")
         await pg.get_by_role("button", name="Data sources & live status").click()
         await pg.wait_for_timeout(9000)
         await pg.locator("button:has(svg.lucide-x)").first.click()
         await pg.wait_for_timeout(800)
 
-        await cap("Click anywhere for a point summary", "Weather, alerts, hazard zone, land cover, past fires, slope, buildings and nearest RAWS station")
+        await cap("Click anywhere for a point summary", "Weather, alerts, Bellwether and USDA burn probability, hazard zone, land cover, past fires, slope, buildings, nearest RAWS")
         await pg.mouse.click(1180, 610)
         await pg.wait_for_timeout(15000)
         await pg.locator("button:has(svg.lucide-x)").first.click()  # close the location card
@@ -99,6 +99,12 @@ async def main():
         await pg.locator("label", has_text="Terrain slope").locator("input").check()
         await pg.wait_for_timeout(6500)
         await pg.locator("label", has_text="Terrain slope").locator("input").uncheck()
+        await cap("New: USDA Wildfire Risk to Communities", "Public, nationwide annual burn probability (30 m), a counterpart to the partner-only Bellwether layer")
+        await pg.get_by_role("button", name="Off").click()
+        await pg.locator("label", has_text="Annual burn probability").locator("input").check()
+        await pg.wait_for_timeout(8000)
+        await pg.locator("label", has_text="Annual burn probability").locator("input").uncheck()
+        await pg.get_by_role("button", name="1-year").click()
 
         await cap("Bellwether vs CAL FIRE hazard zones", "Where the partner model and the state map agree and disagree (only where Bellwether has values)")
         await pg.locator("select").first.select_option("san_bruno")
@@ -140,7 +146,7 @@ async def main():
         # ---------------- VLM evaluation: T3
         await pg.goto(BASE + f"/?mode=vision&task=t3&case={T3_CASE}", wait_until="domcontentloaded")
         await pg.wait_for_selector("text=Stored model outputs for this case", timeout=30000)
-        await cap("VLM evaluation on held-out fires (2024–25)", "Post-fire task: scores computed from the stored per-building outputs of the paper's runs")
+        await cap("VLM evaluation on held-out fires (2024–25)", "Post-fire task: scores computed from the stored per-building outputs of the evaluation runs")
         await pg.wait_for_timeout(8000)
         await cap("One test building: French Fire, July 2024", "Verified Wayback captures before and 2 days after the fire; label from the CAL FIRE inspection")
         await pg.mouse.wheel(0, 330)

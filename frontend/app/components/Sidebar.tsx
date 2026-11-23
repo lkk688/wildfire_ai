@@ -30,9 +30,15 @@ const LAYERS: Array<{ id: keyof LayerToggles; title: string; source: string; ico
   { id: 'fuel', title: 'Fuel moisture (RAWS)', source: 'CDEC, 10-h fuel sticks, hourly', icon: <Droplet className="w-4 h-4" />, tone: 'bg-teal-500/10 text-teal-400 border-teal-500/20' },
   { id: 'wind', title: 'Wind (HRRR)', source: 'NOAA HRRR 3 km via Open-Meteo', icon: <Wind className="w-4 h-4" />, tone: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
   { id: 'fhsz', title: 'Fire Hazard Severity Zones', source: 'CAL FIRE SRA 2023 · LRA 2025', icon: <Shield className="w-4 h-4" />, tone: 'bg-red-500/10 text-red-400 border-red-500/20' },
+  { id: 'wrc', title: 'Annual burn probability', source: 'USDA Wildfire Risk to Communities, 30 m', icon: <Flame className="w-4 h-4" />, tone: 'bg-blue-500/10 text-blue-300 border-blue-500/20' },
   { id: 'slope', title: 'Terrain slope', source: 'USGS 3DEP DEM', icon: <Mountain className="w-4 h-4" />, tone: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
   { id: 'ndvi', title: 'Vegetation (NDVI)', source: 'Sentinel-2, latest clear scene', icon: <Sparkles className="w-4 h-4" />, tone: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
   { id: 'buildings', title: 'Building footprints', source: 'Microsoft US Building Footprints', icon: <Home className="w-4 h-4" />, tone: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+];
+
+// Classes drawn by backend/live_sources.py (wrc_bp_overlay); below 0.05 %/yr is left clear.
+const WRC_LEGEND: Array<[string, string]> = [
+  ['0.05–0.2 %/yr', '#BFDBFE'], ['0.2–0.5', '#60A5FA'], ['0.5–1', '#2563EB'], ['≥1 %/yr', '#1E3A8A'],
 ];
 
 function StatusLine({ s }: { s?: LayerState }) {
@@ -187,6 +193,13 @@ export default function Sidebar({
                 />
               </div>
               <StatusLine s={layerStatus[l.id]} />
+              {l.id === 'wrc' && layers.wrc && (
+                <div className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-1 text-[10px] text-slate-400">
+                  {WRC_LEGEND.map(([label, color]) => (
+                    <span key={label} className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />{label}</span>
+                  ))}
+                </div>
+              )}
             </label>
           ))}
           <div className="text-[10px] text-slate-500 px-1">Click anywhere on the map for a point summary from all sources.</div>

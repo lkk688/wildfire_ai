@@ -33,7 +33,7 @@ class WildfireToolRegistry:
             _fn("get_live_fuel_moisture", "Latest hourly readings from CDEC RAWS stations near the region: 10-h fuel stick "
                 "moisture (%), air temperature, humidity and wind.", REGION),
             _fn("query_location", "Everything the real data say about a point: HRRR weather and alerts, Bellwether 1-/5-year "
-                "probability (pilot area only), CAL FIRE FHSZ zone, ESA WorldCover land cover, past fire perimeters, "
+                "probability (pilot area only), USDA Wildfire Risk to Communities annual burn probability (national), CAL FIRE FHSZ zone, ESA WorldCover land cover, past fire perimeters, "
                 "Microsoft building footprints within the radius, slope and the nearest RAWS fuel moisture.",
                 {**LATLON, "radius_feet": {"type": "number", "description": "Radius in feet (default 130)"}}, ["lat", "lng"]),
             _fn("get_model_evaluation", "Bellwether 1-year probability vs CAL FIRE FHSZ, computed on the 100 m grid of the "

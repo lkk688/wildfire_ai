@@ -13,6 +13,7 @@ Sources (all public, no API key):
   USGS 3DEP elevation (slope computed here) ... elevation.nationalmap.gov 3DEPElevation ImageServer
   Sentinel-2 NDVI (Esri Sentinel-2 Views, one dated scene) ... sentinel.arcgis.com Sentinel2 ImageServer
   CAL FIRE FHSZ: SRA 2023 (FHSZSRA_23_3) and LRA 2025 (FHSZLRA25_v1_All) ... services1.arcgis.com/jUJYIo9tSA7EHvfZ
+  USDA Wildfire Risk to Communities annual burn probability (2024 release) ... imagery.geoplatform.gov ImageServer
   ESA WorldCover 2021 10 m land cover (point lookup) ... esa-worldcover.s3.eu-central-1.amazonaws.com
   Microsoft US Building Footprints (local extract; scripts/data/extract_ms_buildings_region.py)
 """
@@ -411,6 +412,68 @@ def fhsz_at(lat: float, lon: float) -> Optional[dict]:
     return {"zone": "Not in a mapped FHSZ (Moderate or higher)", "responsibility_area": None}
 
 
+# ----------------------------------------------------------------------------- USDA Wildfire Risk to Communities
+# Annual burn probability (FSim, 270 m upsampled to 30 m; landscape as of end-2020), 2024 release
+# (Scott et al. 2024, https://doi.org/10.2737/RDS-2020-0016-2). The public image service stores BP x 10,000 as
+# U16: the published BP range is 0-0.14 and the service maximum is 1352. The service is meant for display; the
+# source rasters are the reference for quantitative work.
+WRC_BP = ("https://imagery.geoplatform.gov/iipp/rest/services/Fire_Aviation/"
+          "USFS_EDW_RMRS_WRC_BurnProbability/ImageServer")
+WRC_SCALE = 10000.0
+WRC_CLASSES = [  # (lower bound of annual BP, label, RGBA); below 0.0005 is left transparent
+    (0.0005, "0.05-0.2 %/yr", (191, 219, 254, 130)),
+    (0.002, "0.2-0.5 %/yr", (96, 165, 250, 160)),
+    (0.005, "0.5-1 %/yr", (37, 99, 235, 185)),
+    (0.01, ">=1 %/yr", (30, 58, 138, 210)),
+]
+WRC_SOURCE = "USDA Forest Service, Wildfire Risk to Communities (2024 release), annual burn probability"
+
+
+@cached("usda_wrc_bp", ttl=86400)
+def wrc_bp_overlay(bbox: Bbox, size: int = 900) -> dict:
+    import rasterio
+    from PIL import Image
+    w = size
+    h = max(64, int(size * (bbox[3] - bbox[1]) / ((bbox[2] - bbox[0]) * math.cos(math.radians((bbox[1] + bbox[3]) / 2)))))
+    r = _get(f"{WRC_BP}/exportImage", {"bbox": ",".join(map(str, bbox)), "bboxSR": 4326, "imageSR": 4326,
+                                       "size": f"{w},{h}", "format": "tiff", "pixelType": "U16",
+                                       "interpolation": "RSP_NearestNeighbor", "f": "image"}, timeout=90)
+    with rasterio.MemoryFile(r.content) as mf, mf.open() as src:
+        v = src.read(1).astype(float)
+        b = src.bounds  # the service may widen the bbox to keep the aspect ratio
+    bp = v / WRC_SCALE
+    rgba = np.zeros(bp.shape + (4,), dtype=np.uint8)
+    for lo, _, col in WRC_CLASSES:
+        rgba[bp >= lo] = col
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"wrc_bp_{_bbox_key(bbox)}.png"
+    Image.fromarray(rgba, mode="RGBA").save(STATIC_DIR / name)
+    burnable = bp > 0
+    bounds = [lo for lo, _, _ in WRC_CLASSES] + [1.0]
+    share = {"lt0.05": round(float(np.mean(bp[burnable] < WRC_CLASSES[0][0])) * 100, 1) if burnable.any() else None}
+    for (lo, label, _), hi in zip(WRC_CLASSES, bounds[1:]):
+        share[label] = round(float(np.mean((bp[burnable] >= lo) & (bp[burnable] < hi))) * 100, 1) if burnable.any() else None
+    return {"image_url": f"/static/{name}", "bounds": [[b.bottom, b.left], [b.top, b.right]],
+            "max_annual_bp": round(float(bp.max()), 4), "median_annual_bp_nonzero":
+                round(float(np.median(bp[burnable])), 4) if burnable.any() else None,
+            "area_share_pct_of_nonzero": share, "pixel_m": 30, "landscape_as_of": "end of 2020 (LANDFIRE 2020)",
+            "source": WRC_SOURCE, "citation": "Scott et al. 2024, doi:10.2737/RDS-2020-0016-2",
+            "classes": {label: "#%02X%02X%02X" % col[:3] for _, label, col in WRC_CLASSES}}
+
+
+def wrc_bp_at(lat: float, lon: float) -> Optional[dict]:
+    d = _get(f"{WRC_BP}/identify", {"geometry": json.dumps({"x": lon, "y": lat, "spatialReference": {"wkid": 4326}}),
+                                    "geometryType": "esriGeometryPoint", "returnGeometry": "false",
+                                    "returnCatalogItems": "false", "f": "json"}).json()
+    val = d.get("value")
+    if val in (None, "", "NoData"):
+        return None
+    bp = float(val) / WRC_SCALE
+    return {"annual_burn_probability": round(bp, 5), "pct_per_year": round(bp * 100, 3),
+            "one_in_n_years": round(1 / bp) if bp > 0 else None, "source": WRC_SOURCE,
+            "landscape_as_of": "end of 2020"}
+
+
 def historic_fires_at(lat: float, lon: float) -> List[dict]:
     d = _get(f"{CAL_HIST}/query", {"geometry": f"{lon},{lat}", "geometryType": "esriGeometryPoint", "inSR": 4326,
                                    "spatialRel": "esriSpatialRelIntersects", "outFields": "FIRE_NAME,YEAR_,GIS_ACRES",
@@ -520,6 +583,10 @@ SOURCES = [
     {"id": "calfire_fhsz", "name": "Fire Hazard Severity Zones", "provider": "CAL FIRE",
      "access": "Public ArcGIS feature services (SRA 2023, LRA 2025)", "resolution": "Vector", "cadence": "Map revisions",
      "description": "Official Moderate / High / Very High zones in State and Local Responsibility Areas."},
+    {"id": "usda_wrc_bp", "name": "Annual burn probability (Wildfire Risk to Communities)", "provider": "USDA Forest Service",
+     "access": "Public ArcGIS image service (geoplatform.gov); data: doi:10.2737/RDS-2020-0016-2", "resolution": "30 m (FSim at 270 m, upsampled)",
+     "cadence": "2024 release; landscape as of end-2020",
+     "description": "Simulated yearly chance that a fire burns each location (FSim). Public, national counterpart to the Bellwether layer."},
     {"id": "esa_worldcover", "name": "Land cover", "provider": "ESA WorldCover 2021",
      "access": "Cloud-optimised GeoTIFFs on AWS", "resolution": "10 m", "cadence": "2021 map",
      "description": "Used for the land cover around a clicked point."},
@@ -544,6 +611,7 @@ def check_all(region_bbox: Bbox, lat: float, lon: float) -> List[dict]:
         "usgs_3dep": lambda: slope_overlay(region_bbox)["pixel_m"],
         "sentinel2_ndvi": lambda: ndvi_overlay(region_bbox)["acquired_utc"],
         "calfire_fhsz": lambda: len(fhsz(region_bbox)["features"]),
+        "usda_wrc_bp": lambda: wrc_bp_overlay(region_bbox)["max_annual_bp"],
         "esa_worldcover": lambda: land_cover_around(lat, lon)["at_point"],
         "ms_building_footprints": lambda: buildings_within(lat, lon, 500)["count"],
     }

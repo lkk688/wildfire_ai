@@ -12,6 +12,7 @@ export type LayerToggles = {
   buildings: boolean;
   ndvi: boolean;
   fhsz: boolean;
+  wrc: boolean;
   wind: boolean;
 };
 
@@ -70,7 +71,7 @@ export default function MapView({
     // Keyless Esri basemaps (the CARTO tiles used before now require an API key)
     const esri = (svc: string) => `https://server.arcgisonline.com/ArcGIS/rest/services/${svc}/MapServer/tile/{z}/{y}/{x}`;
     const data =
-      'Bellwether (X), NIFC, CAL FIRE, NASA FIRMS, CDEC, NOAA HRRR/Open-Meteo, NWS, USGS 3DEP, Copernicus Sentinel-2/Esri, ESA WorldCover, Microsoft Building Footprints';
+      'Bellwether (X), NIFC, CAL FIRE, NASA FIRMS, CDEC, NOAA HRRR/Open-Meteo, NWS, USGS 3DEP, USDA Forest Service WRC, Copernicus Sentinel-2/Esri, ESA WorldCover, Microsoft Building Footprints';
     const dark = L.layerGroup([
       L.tileLayer(esri('Canvas/World_Dark_Gray_Base'), { maxZoom: 19, maxNativeZoom: 16, attribution: `Esri, HERE, Garmin, OSM | ${data}` }),
       L.tileLayer(esri('Canvas/World_Dark_Gray_Reference'), { maxZoom: 19, maxNativeZoom: 16 }),
@@ -256,7 +257,7 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.fuel, selectedRegion]);
 
-  // ---------------------------------------------------------------- Raster overlays: slope, NDVI
+  // ---------------------------------------------------------------- Raster overlays: slope, USDA burn probability, NDVI
   const rasterLayer = (id: string, on: boolean, path: string, op: number, detail: (l: any) => string) => {
     if (!map) return;
     setLayer(id, null);
@@ -275,6 +276,12 @@ export default function MapView({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.slope, selectedRegion]);
+  useEffect(() => {
+    rasterLayer('wrc', layers.wrc, `/api/layers/wrc-burn-probability?bbox=${bboxParam(region.bbox)}`, 0.8, (l) =>
+      `30 m; max ${fmt(l.max_annual_bp * 100, 2)}%/yr, median ${fmt((l.median_annual_bp_nonzero ?? 0) * 100, 2)}%/yr (landscape as of 2020)`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layers.wrc, selectedRegion]);
   useEffect(() => {
     rasterLayer('ndvi', layers.ndvi, `/api/layers/ndvi?bbox=${bboxParam(region.bbox)}`, 0.7, (l) =>
       `Scene ${l.acquired_utc?.slice(0, 10)} (${l.cloud_cover_pct}% cloud)`,

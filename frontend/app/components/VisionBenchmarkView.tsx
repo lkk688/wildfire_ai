@@ -307,7 +307,7 @@ export default function VisionBenchmarkView({ onSwitchToMap }: VisionBenchmarkVi
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-sky-500/15 text-sky-300 border border-sky-500/30">Imagery: Esri Wayback, capture dates verified</span>
             </div>
             <p className="text-xs text-slate-400">
-              Every building below is from a fire the models were never tuned on. Predictions are the stored outputs of the paper&apos;s runs; you can re-run any case now.
+              Every building below is from a fire the models were never tuned on. Predictions are the stored outputs of the evaluation runs; you can re-run any case now.
             </p>
           </div>
         </div>

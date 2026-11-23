@@ -6,11 +6,11 @@ from CAL FIRE damage inspections (DINS).
 
 The repository has two parts:
 
-1. **The research pipeline** (`scripts/`, `src/vlm_benchmark/imagery_provenance.py`, `paper/`). Every number it
-   produces is computed from real records and real model outputs. What is and is not established is tracked in
+1. **The research pipeline** (`scripts/`, `src/vlm_benchmark/imagery_provenance.py`). Every number it produces
+   is computed from real records and real model outputs. What is and is not established is tracked in
    [`docs/EVIDENCE_STATUS.md`](docs/EVIDENCE_STATUS.md), the single source of truth for results.
 2. **A web demo** (`backend/`, `frontend/`) with two views: a risk map on live public data, and a browser for the
-   held-out evaluation behind the paper. See [Web demo](#web-demo).
+   held-out VLM evaluation. See [Web demo](#web-demo).
 
 ## Research pipeline
 
@@ -44,8 +44,8 @@ release date.
 - missingness leakage
 - retrieval
 
-**Paper tables and figures.** These are generated only from `output/` by `scripts/paper/make_tables.py` and
-`make_figures.py`. VLM answers that fail to parse count as p = 0.5 (intention-to-treat).
+**Scoring.** VLM answers that fail to parse count as p = 0.5 (intention-to-treat). Result tables are generated
+only from `output/`, never typed in by hand.
 
 **Exploratory pilots (2026-10-22, feasibility only).**
 - *Community-scale risk:* `scripts/data/build_community_cells.py`, `worldcover_features.py`.
@@ -85,6 +85,7 @@ release date.
 | Microsoft US Building Footprints | ODbL |
 | ESA WorldCover 2021 | CC BY 4.0 |
 | ERA5 via Open-Meteo | CC BY 4.0 |
+| USDA Forest Service, Wildfire Risk to Communities | Public; cite Scott et al. 2024, [doi:10.2737/RDS-2020-0016-2](https://doi.org/10.2737/RDS-2020-0016-2) |
 | Bellwether rasters | Shared by the partner; not redistributed |
 
 ## Web demo
@@ -107,6 +108,7 @@ every source when it opens.
 | Layer / panel | Source (fetched live unless noted) |
 |---|---|
 | Bellwether 1-year / 5-year hazard, risk drivers | Partner GeoTIFFs (local files, pilot area only: about 55% of cells valid; San Jose is not covered) |
+| Annual burn probability | USDA Forest Service, Wildfire Risk to Communities (2024 release, 30 m; landscape as of end-2020), public image service |
 | Current perimeters, CAL FIRE incidents | NIFC WFIGS; incidents.fire.ca.gov |
 | Historic perimeters (1950+) | CAL FIRE FRAP |
 | Satellite hotspots (24 h) | NASA FIRMS VIIRS public CSVs (S-NPP, NOAA-20, NOAA-21) |
@@ -118,6 +120,12 @@ every source when it opens.
 | Land cover | ESA WorldCover 2021 |
 | Building footprints | Microsoft US Building Footprints (local file) |
 
+**Two hazard layers.** Bellwether is partner data and is available only in the pilot area. The USDA Wildfire Risk
+to Communities annual burn probability is public and covers the whole country, so the map works anywhere without
+partner data. The two differ in method and date: Bellwether is a machine-learning forecast for 2026–27 and 2026–31,
+while USDA's FSim simulation reflects the landscape as of 2020. The public service stores probability × 10,000;
+the app converts it back (the published range is 0–0.14 per year).
+
 - **Point summary.** Click anywhere on the map to combine all sources at that point.
 - **Bellwether vs FHSZ.** Compares the partner model with the state hazard map, cell by cell, where Bellwether
   has values.
@@ -126,7 +134,7 @@ every source when it opens.
 
 ### View 2: VLM evaluation (held-out fires)
 
-The view browses the **2024–25 test fires** used in the paper:
+The view browses the **2024–25 held-out test fires**, which no model was trained or tuned on:
 
 - **Post-fire (T3):** 1,246 buildings, with pre- and post-fire Wayback crops whose capture dates are verified.
 - **Pre-fire pairs (T2):** 403 same-fire neighbour pairs, shown in the same A/B order the models saw. The outcome
@@ -139,8 +147,8 @@ For each case you see:
   LoRA and the DINOv2 linear probe;
 - the model's cited evidence.
 
-The scoreboard is computed from the same per-case outputs. Its figures match `paper/numbers.tex`: T3 AUROC .892
-for Sonnet, .892 / .903 for the LoRA models and .881 for DINOv2; T2 pair accuracy .571–.620.
+The scoreboard is computed from the same per-case outputs: T3 AUROC .892 for Sonnet, .892 / .903 for the LoRA
+models and .881 for DINOv2; T2 pair accuracy .571–.620.
 
 **Run this case now** re-sends the case to Claude (or to Qwen, if configured), using the exact research prompt and
 images. It needs `CLAUDE_API_KEY` on the backend.
@@ -148,18 +156,13 @@ images. It needs `CLAUDE_API_KEY` on the backend.
 **Privacy.** Street addresses, APNs and assessed values are not sent to the browser, and coordinates are rounded to
 about 100 m.
 
-### What changed (22 Oct – 22 Nov 2026)
+### What's new (22 Nov 2026)
 
-An audit on 2026-10-22 found that the old demo showed many values that were synthetic or generated from the true
-outcome label. All of these have been removed or replaced with live sources:
-
-- fake incidents, hotspots, weather, slope, footprints and FHSZ;
-- "Bellwether" probabilities, insurance figures, expert diagnoses and RLVR results.
-
-The VLM view no longer shows the 50-case development set. It was confounded, and its stored runs used a prompt that
-stated the same made-up weather for every case. The corresponding endpoints (`/api/vlm/benchmark/results`,
-`/metrics`, `/api/vlm/predict`) now return HTTP 410 with the reason. The screenshots of the old demo were deleted
-from `docs/assets/` and `src/output/`; earlier write-ups are in [`docs/archive/`](docs/archive/).
+- **VLM evaluation on held-out fires**: per-case outputs of every model, verified imagery, and a live re-run.
+- **USDA Wildfire Risk to Communities** burn probability as a public, nationwide hazard layer.
+- **AI copilot** answers render as formatted text (lists, tables, bold).
+- The older 50-case development-set endpoints (`/api/vlm/benchmark/results`, `/metrics`, `/api/vlm/predict`) are
+  retired and return HTTP 410.
 
 ### Running the demo
 
@@ -186,5 +189,4 @@ Bellwether layer. Deep links:
 python scripts/data/build_research_splits.py              # event-level, forward-in-time splits
 python scripts/eval/run_vlm_conditions.py --help          # zero-shot VLM conditions (T1 / T3)
 python scripts/eval/run_vlm_pairs.py --help               # exposure-controlled pairs (T2)
-python scripts/paper/make_tables.py && python scripts/paper/make_figures.py
 ```

@@ -38,6 +38,7 @@ export default function Home() {
     buildings: true,
     ndvi: false,
     fhsz: false,
+    wrc: false,
     wind: true,
   });
   const [layerStatus, setLayerStatus] = useState<Record<string, LayerState>>({});

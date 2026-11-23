@@ -84,7 +84,7 @@ def root():
         "capabilities": [
             "Bellwether 1-year / 5-year hazard overlays (partner GeoTIFFs, pilot area)",
             "Live layers: NIFC/CAL FIRE perimeters and incidents, NASA FIRMS, CDEC RAWS fuel moisture, NOAA HRRR wind, "
-            "NWS alerts, USGS 3DEP slope, Sentinel-2 NDVI, CAL FIRE FHSZ, Microsoft building footprints",
+            "NWS alerts, USGS 3DEP slope, Sentinel-2 NDVI, CAL FIRE FHSZ, USDA Wildfire Risk to Communities burn probability, Microsoft building footprints",
             "Point query combining the layers above",
             "AI copilot whose tools call the same live sources"
         ],
@@ -173,6 +173,12 @@ def get_fuel_moisture_stations(bbox: Optional[str] = Query(None), region: str = 
 def get_terrain_slope(bbox: Optional[str] = Query(None), region: str = Query("san_bruno")):
     """Slope (%) computed from the USGS 3DEP DEM, returned as a PNG overlay."""
     return {"success": True, "layer": _live(lambda: live.slope_overlay(_bbox(bbox, region)))}
+
+
+@app.get("/api/layers/wrc-burn-probability")
+def get_wrc_burn_probability(bbox: Optional[str] = Query(None), region: str = Query("san_bruno")):
+    """USDA Wildfire Risk to Communities annual burn probability (2024 release), classed PNG overlay."""
+    return {"success": True, "layer": _live(lambda: live.wrc_bp_overlay(_bbox(bbox, region)))}
 
 
 @app.get("/api/layers/ndvi")
@@ -445,7 +451,7 @@ class EvaluateRewardRequest(BaseModel):
 
 @app.post("/api/query-corridor")
 def query_corridor(req: QueryCorridorRequest):
-    """Real data about a clicked point: HRRR weather and alerts, Bellwether, FHSZ, land cover, past fires,
+    """Real data about a clicked point: HRRR weather and alerts, Bellwether, USDA burn probability, FHSZ, land cover, past fires,
     buildings within the radius, slope and the nearest RAWS fuel moisture."""
     try:
         result = gis_service.query_point(lat=req.lat, lng=req.lng, radius_feet=req.radius_feet)

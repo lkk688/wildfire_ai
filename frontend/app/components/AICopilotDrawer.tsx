@@ -177,7 +177,7 @@ My tools query the same live sources as the map:
 * **NOAA HRRR** weather and wind (via Open-Meteo) and **NWS** alerts such as Red Flag Warnings
 * **CDEC RAWS** 10-h fuel moisture, hourly
 * **Active fires**: CAL FIRE incidents, NIFC perimeters, NASA FIRMS satellite detections
-* **Location context**: FHSZ zone, land cover, past fires, building footprints, slope, and Bellwether (pilot area)
+* **Location context**: FHSZ zone, USDA annual burn probability, land cover, past fires, building footprints, slope, and Bellwether (pilot area)
 
 Ask about current conditions, active fires or a specific location.`
           : `### 🏡 Resident mode

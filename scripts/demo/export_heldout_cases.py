@@ -12,7 +12,7 @@ from CAL FIRE DINS, every image path and capture date from the verified Wayback 
   T2  pre-fire same-fire neighbour pairs: output/splits/pairs_test.jsonl + pairs_test_large.jsonl (403 main pairs)
       - output/experiments/vlm_pairs/pairs_*/raw.jsonl (image and metadata-only conditions)
 
-Unparsed answers are kept as p = 0.5 (intention-to-treat), as in the paper.
+Unparsed answers are kept as p = 0.5 (intention-to-treat), as in the evaluation scripts.
 Privacy: street addresses, APNs and assessed values are not exported; coordinates are rounded to 3 decimals
 (~100 m) for the map link only.
 

@@ -200,6 +200,7 @@ class GISDataService:
 
         part("live_weather", lambda: self.get_weather(lat, lng))
         part("bellwether", lambda: self.bellwether_at(lat, lng))
+        part("usda_burn_probability", lambda: live.wrc_bp_at(lat, lng))
         part("fhsz", lambda: live.fhsz_at(lat, lng))
         part("land_cover", lambda: live.land_cover_around(lat, lng, max(radius_m, 50.0)))
         part("historic_fires", lambda: live.historic_fires_at(lat, lng))
