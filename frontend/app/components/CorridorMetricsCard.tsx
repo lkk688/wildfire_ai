@@ -1,5 +1,6 @@
 'use client';
 
+import LocalDataAtPoint from './LocalDataAtPoint';
 import React, { useState } from 'react';
 import { Home, Flame, X, Wind, Shield, TreePine, History, Droplet, Mountain, Loader2, AlertTriangle, Layers } from 'lucide-react';
 
@@ -166,6 +167,7 @@ export default function CorridorMetricsCard({ data, onClose }: CorridorMetricsCa
             </div>
           )}
           {data.corridor_note && <div className="text-[10px] text-slate-500">Orange circle: {data.corridor_note}</div>}
+          <LocalDataAtPoint key={`${center.lat},${center.lng}`} lat={center.lat} lng={center.lng} />
         </>
       )}
     </div>

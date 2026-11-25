@@ -54,6 +54,10 @@ export default function Home() {
   const [wxHour, setWxHour] = useState<number | null>(null);
   const [wxField, setWxField] = useState<WxVar | 'none'>('none');
   const [opacity, setOpacity] = useState<number>(0.75);
+  // California data cache layers (backend/geodata), drawn as map tiles; ?geo=fuel_model,ignitions
+  const [geoLayers, setGeoLayers] = useState<string[]>([]);
+  const [geoOpacity, setGeoOpacity] = useState<number>(0.8);
+  const [mapZoom, setMapZoom] = useState<number>(13);
   const [selectedCorridorData, setSelectedCorridorData] = useState<any>(null);
   const [layerStats, setLayerStats] = useState<any>(null);
   const [isDataCatalogOpen, setIsDataCatalogOpen] = useState<boolean>(false);
@@ -85,6 +89,8 @@ export default function Home() {
       const on = new Set(ls.split(',').filter(Boolean));
       setLayers((prev) => Object.fromEntries(Object.keys(prev).map((k) => [k, on.has(k)])) as LayerToggles);
     }
+    const geo = params.get('geo');
+    if (geo) setGeoLayers(geo.split(',').filter(Boolean));
     const lat = parseFloat(params.get('lat') || ''), lng = parseFloat(params.get('lng') || ''), z = parseInt(params.get('z') || '', 10);
     if (params.get('panel') === 'eval') setIsModelEvalOpen(true);
     if (params.get('panel') === 'sources') setIsDataCatalogOpen(true);
@@ -96,7 +102,7 @@ export default function Home() {
     } catch {
       seen = false;
     }
-    const deepLink = ['case', 'lat', 'panel', 'layers', 'mode'].some((k) => params.has(k));
+    const deepLink = ['case', 'lat', 'panel', 'layers', 'mode', 'geo'].some((k) => params.has(k));
     const g = params.get('guide');
     if (g === '1' || (g !== '0' && !seen && !deepLink)) setGuideOpen(true);
     setReady(true);
@@ -168,6 +174,11 @@ export default function Home() {
             onSwitchToVision={() => setAppMode('vision')}
             wxField={wxField}
             setWxField={setWxField}
+            geoLayers={geoLayers}
+            setGeoLayers={setGeoLayers}
+            geoOpacity={geoOpacity}
+            setGeoOpacity={setGeoOpacity}
+            mapZoom={mapZoom}
           />
 
           {/* Main Interactive Map View */}
@@ -187,6 +198,9 @@ export default function Home() {
               wxStore={wxStore}
               wxHour={wxHour}
               wxField={wxField}
+              geoLayers={geoLayers}
+              geoOpacity={geoOpacity}
+              onZoomChange={setMapZoom}
             />}
 
             {(layers.wind || layers.alerts || wxField !== 'none') && (
@@ -203,7 +217,7 @@ export default function Home() {
               />
             )}
 
-            <MapLegend activeLayer={activeLayer} layers={layers} layerStatus={layerStatus} wxField={wxField} />
+            <MapLegend activeLayer={activeLayer} layers={layers} layerStatus={layerStatus} wxField={wxField} geoLayers={geoLayers} />
 
             {/* First-time hint: the point query is the most useful thing on the map */}
             {!selectedCorridorData && !hintDismissed && (

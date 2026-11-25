@@ -6,6 +6,7 @@ import type { LayerToggles } from './MapView';
 import { LAYER_LEGENDS, LEGEND_ORDER, Swatch, bellwetherLegend } from '../lib/legend';
 import type { LayerState } from '../lib/api';
 import { WX_VARS, WxVar, gradientCss, legendPos } from '../lib/weatherVars';
+import { useGeoCatalog } from '../lib/geodata';
 
 function Mark({ s }: { s: Swatch }) {
   const shape = s.shape || 'box';
@@ -23,8 +24,10 @@ function Mark({ s }: { s: Swatch }) {
 }
 
 // Legend for the layers that are currently switched on (colours match what the map draws).
-export default function MapLegend({ activeLayer, layers, layerStatus, wxField }: { activeLayer: '1yr' | '5yr' | 'none'; layers: LayerToggles; layerStatus: Record<string, LayerState>; wxField: WxVar | 'none' }) {
+export default function MapLegend({ activeLayer, layers, layerStatus, wxField, geoLayers = [] }: { activeLayer: '1yr' | '5yr' | 'none'; layers: LayerToggles; layerStatus: Record<string, LayerState>; wxField: WxVar | 'none'; geoLayers?: string[] }) {
   const [open, setOpen] = useState(true);
+  const { layers: cat } = useGeoCatalog();
+  const geoItems = [...geoLayers].reverse().map((id) => cat.find((l) => l.id === id)).filter((l) => l && l.legend) as NonNullable<ReturnType<typeof cat.find>>[];
   const items = [
     ...(activeLayer !== 'none' ? [bellwetherLegend(activeLayer)] : []),
     ...LEGEND_ORDER.filter((k) => (layers as Record<string, boolean>)[k])
@@ -53,7 +56,33 @@ export default function MapLegend({ activeLayer, layers, layerStatus, wxField }:
               </div>
             </div>
           )}
-          {items.length === 0 && wxField === 'none' && <div className="text-[11px] text-slate-400">No layers are on. Turn some on in the left panel.</div>}
+          {geoItems.map((g) => (
+            <div key={g.id}>
+              <div className="text-[11px] font-semibold text-slate-100 leading-tight">{g.title}</div>
+              <div className="text-[10px] text-slate-400 leading-tight">{g.source.split(',')[0]} · {g.date}</div>
+              {g.legend?.ramp && (
+                <>
+                  <div className="mt-1 h-2.5 rounded" style={{ background: `linear-gradient(to right, ${g.legend.ramp.join(', ')})` }} />
+                  <div className="flex justify-between text-[9px] text-slate-400">
+                    <span>{g.legend.min}</span>
+                    <span>{g.legend.units}</span>
+                    <span>{g.legend.max}+</span>
+                  </div>
+                </>
+              )}
+              {g.legend?.swatches && (
+                <div className={`mt-1 grid ${g.legend.swatches.some(([l]) => l.length > 17) ? 'grid-cols-1' : 'grid-cols-2'} gap-x-2 gap-y-0.5`}>
+                  {g.legend.swatches.slice(0, 12).map(([label, color]) => (
+                    <div key={label} className="flex items-center gap-1.5 text-[10px] text-slate-300 min-w-0">
+                      <Mark s={{ label, color, shape: g.legend?.shape === 'dot' ? 'dot' : 'box' }} />
+                      <span className="truncate">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {items.length === 0 && geoItems.length === 0 && wxField === 'none' && <div className="text-[11px] text-slate-400">No layers are on. Turn some on in the left panel.</div>}
           {items.map((it) => (
             <div key={it.id}>
               <div className="text-[11px] font-semibold text-slate-100 leading-tight">{it.title}</div>

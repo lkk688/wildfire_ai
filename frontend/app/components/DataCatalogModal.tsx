@@ -1,5 +1,6 @@
 'use client';
 
+import { useGeoCatalog } from '../lib/geodata';
 import React, { useEffect, useState } from 'react';
 import { BookOpen, X, CheckCircle2, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { getJSON } from '../lib/api';
@@ -87,12 +88,47 @@ export default function DataCatalogModal({ isOpen, onClose, region = 'san_bruno'
               </div>
             );
           })}
+          <GeoCacheTable />
         </div>
 
         <div className="pt-3 border-t border-slate-800 shrink-0 flex items-center justify-between text-xs text-slate-400">
           <span>Bellwether data are shared with the pilot partners and are not redistributed.</span>
           <button onClick={onClose} className="px-5 py-2 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600">Close</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Layers kept in the local California cache (backend/geodata): provenance for every layer the map and agent read.
+function GeoCacheTable() {
+  const { layers, error } = useGeoCatalog();
+  if (error) return <div className="text-xs text-rose-400">California data cache catalog unavailable: {error}</div>;
+  if (!layers.length) return null;
+  return (
+    <div id="geo-cache-sources" className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-2">
+      <h3 className="font-bold text-sm text-slate-100">California data cache ({layers.length} layers)</h3>
+      <p className="text-xs text-slate-300 leading-relaxed">
+        Public statewide layers stored on this server, in a tile pyramid for rasters and GeoParquet for vectors. Layers marked
+        &quot;statewide&quot; are downloaded in full; the others are fetched from the source the first time a place is viewed and kept.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px] text-left">
+          <thead className="text-slate-400">
+            <tr><th className="py-1 pr-2">Layer</th><th className="pr-2">Source</th><th className="pr-2">Date</th><th className="pr-2">Res.</th><th>Cache</th></tr>
+          </thead>
+          <tbody className="text-slate-300">
+            {layers.map((l) => (
+              <tr key={l.id} className="border-t border-slate-800/80 align-top">
+                <td className="py-1 pr-2">{l.url ? <a href={l.url} target="_blank" rel="noreferrer" className="underline decoration-slate-600">{l.title}</a> : l.title}</td>
+                <td className="pr-2 text-slate-400">{l.source}</td>
+                <td className="pr-2 text-slate-400">{l.date}</td>
+                <td className="pr-2 text-slate-400">{l.type === 'raster' ? `${l.res} m` : l.geom}</td>
+                <td className="text-slate-400">{l.type === 'vector' ? (l.available ? 'statewide' : 'not built') : l.prefetch ? 'statewide' : 'on view'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -49,6 +49,14 @@ Active Target Region: **{active_region_name}**.
 4. **Live conditions**: NOAA HRRR weather (NOAA open data on AWS), National Weather Service alerts, CDEC RAWS fuel moisture.
 5. **Active fires**: CAL FIRE incidents, NIFC current perimeters, NASA FIRMS VIIRS detections (last 24 h).
 6. **Location context**: ESA WorldCover land cover, CAL FIRE historical perimeters, Microsoft building footprints, USGS 3DEP slope.
+7. **California data cache** (local copy of public layers for the whole state; tools list_data_layers, query_data_layers,
+   get_data_features, get_fire_weather_history): LANDFIRE fuel models and canopy (spread-model inputs, 30 m), slope and
+   aspect, USFS Wildfire Risk to Communities (burn probability, flame length, exposure type, risk to structures),
+   NAIP 0.6 m aerial photos, Meta 1 m canopy height, Sentinel-2 dry-season NDVI / NDMI, ESA WorldCover, 3DEP elevation,
+   gridMET fire-weather climatology 2000-2025 (wind on high-ERC days, humidity, 100-h fuel moisture), wildfire ignition
+   points since 1992 (NIFC InFORM), fire perimeters, FHSZ, and fuel-treatment polygons (CAL FIRE, CalVTP, prescribed fire,
+   federal). Each result names its source, units and date: cite them. Modelled layers (WRC, canopy height) are models,
+   not measurements; say so when it matters.
 No insurance scores, parcel values or property records are available; never invent them.
 If a tool fails or a source does not cover a place, say so instead of guessing.
 """

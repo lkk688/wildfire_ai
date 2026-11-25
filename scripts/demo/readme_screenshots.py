@@ -86,6 +86,26 @@ async def main(base: str, out: Path, only: set):
             await settle(12000)
             await shot("sources")
 
+        if not only or "geo" in only:
+            # California data cache: fuel model + ignition points with the legend (before any click, so no
+            # location card with partner values is on screen), then the cache section of the point card alone
+            await pg.goto(f"{base}/?lat=37.60&lng=-122.45&z=13&geo=fuel_model,ignitions&layers=&bw=none&guide=0")
+            await settle(12000)
+            await pg.locator("#map-hint button").click()
+            await pg.wait_for_timeout(500)
+            await shot("data_cache")
+            await pg.locator("#data-layers-panel").scroll_into_view_if_needed()
+            await pg.wait_for_timeout(500)
+            await shot("data_cache_panel", pg.locator("#data-layers-panel"))
+            await pg.mouse.click(1050, 450)
+            await pg.wait_for_selector("#local-data-point", timeout=60000)
+            try:
+                await pg.wait_for_selector("text=Reading cache", state="detached", timeout=120000)
+            except Exception:  # noqa: BLE001
+                pass
+            await pg.wait_for_timeout(1500)
+            await shot("data_cache_point", pg.locator("#local-data-point"))
+
         if not only or "vlm" in only:
             # 5. VLM view: task explanation and scoreboard
             await pg.goto(f"{base}/?mode=vision&task=t3&case={T3_CASE}&guide=0")
@@ -117,6 +137,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://localhost:3000")
     ap.add_argument("--out", default=str(Path(__file__).resolve().parents[2] / "docs" / "assets"))
-    ap.add_argument("--only", default="", help="comma list: map,weather,sources,vlm")
+    ap.add_argument("--only", default="", help="comma list: map,weather,sources,geo,vlm")
     a = ap.parse_args()
     asyncio.run(main(a.base, Path(a.out), {x for x in a.only.split(",") if x}))

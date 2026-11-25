@@ -33,6 +33,9 @@ interface MapViewProps {
   wxStore: WeatherStore;
   wxHour: number | null; // epoch hour picked on the time slider; null = now
   wxField: WxVar | 'none';
+  geoLayers: string[]; // California data-cache layers drawn as tiles (backend/geodata)
+  geoOpacity: number;
+  onZoomChange: (z: number) => void;
 }
 
 const BUILDING_MIN_ZOOM = 15;
@@ -57,6 +60,9 @@ export default function MapView({
   wxStore,
   wxHour,
   wxField,
+  geoLayers,
+  geoOpacity,
+  onZoomChange,
 }: MapViewProps) {
   const [map, setMap] = useState<L.Map | null>(null);
   const refs = useRef<Record<string, L.Layer | null>>({});
@@ -534,6 +540,43 @@ export default function MapView({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, layers.buildings]);
+
+  // ---------------------------------------------------------------- California data cache: one tile layer per layer id
+  const geoRefs = useRef<Record<string, L.TileLayer>>({});
+  useEffect(() => {
+    if (!map) return;
+    const cur = geoRefs.current;
+    for (const id of Object.keys(cur)) {
+      if (!geoLayers.includes(id)) {
+        map.removeLayer(cur[id]);
+        delete cur[id];
+      }
+    }
+    geoLayers.forEach((id, k) => {
+      if (!cur[id]) {
+        cur[id] = L.tileLayer(`${API_BASE}/api/geodata/tiles/${id}/{z}/{x}/{y}.png`, {
+          maxZoom: 19,
+          opacity: geoOpacity,
+          zIndex: 300 + k,
+          attribution: 'California data cache (see Data sources)',
+        }).addTo(map);
+      }
+      cur[id].setOpacity(geoOpacity);
+      cur[id].setZIndex(300 + k); // later-checked layers draw on top
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, geoLayers.join(','), geoOpacity]);
+
+  useEffect(() => {
+    if (!map) return;
+    const report = () => onZoomChange(map.getZoom());
+    report();
+    map.on('zoomend', report);
+    return () => {
+      map.off('zoomend', report);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
 
   // ---------------------------------------------------------------- Click: point query
   useEffect(() => {

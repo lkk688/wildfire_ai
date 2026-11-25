@@ -41,6 +41,24 @@ class WildfireToolRegistry:
             _fn("get_active_fires", "Active fires now: CAL FIRE incidents, NIFC current perimeters and NASA FIRMS VIIRS "
                 "detections from the last 24 hours, within the region or statewide.",
                 {**REGION, "statewide": {"type": "boolean", "description": "Search all of California"}}),
+            _fn("list_data_layers", "List the California data-cache layers (id, title, units, source, date). Call this "
+                "first to choose layer ids for query_data_layers or get_data_features.",
+                {"group": {"type": "string", "description": "Optional group name filter, e.g. 'Fuel treatments'"}}),
+            _fn("query_data_layers", "Values of the California data-cache layers at a point (no radius) or summaries "
+                "within radius_m of it: fuel model, canopy, slope, burn probability, flame length, land cover, NDVI, "
+                "fire-weather climatology, plus FHSZ zone, past fires, ignitions, fuel treatments and buildings nearby.",
+                {**LATLON, "radius_m": {"type": "number", "description": "Radius in metres; omit for a single point"},
+                 "layers": {"type": "array", "items": {"type": "string"},
+                            "description": "Layer ids (default: all except imagery)"}}, ["lat", "lng"]),
+            _fn("get_data_features", "Vector features near a point from the data cache: 'ignitions' (1992-present "
+                "wildfire origins with cause and size), 'fire_history' perimeters, 'fhsz', 'treatments_calfire', "
+                "'treatments_rx', 'treatments_calvtp', 'treatments_federal', 'buildings'.",
+                {**LATLON, "layer": {"type": "string"}, "radius_m": {"type": "number", "description": "Default 2000"},
+                 "limit": {"type": "integer", "description": "Default 50"}}, ["lat", "lng", "layer"]),
+            _fn("get_fire_weather_history", "Fire-weather climatology 2000-2025 of the 4 km gridMET cell at a point: "
+                "fire-weather days per month, wind direction on those days, and the 10 worst days with wind and "
+                "humidity. Use it to pick wind scenarios for spread or to explain seasonal danger.", LATLON,
+                ["lat", "lng"]),
             _fn("get_home_hardening_guidelines", "Reference list of California home-hardening and defensible-space measures "
                 "(CDI 'Safer from Wildfires', CAL FIRE Zones 0-2).", {}),
         ]
@@ -74,6 +92,29 @@ class WildfireToolRegistry:
                         "firms_sample": [f["properties"] | {"lon": f["geometry"]["coordinates"][0],
                                                             "lat": f["geometry"]["coordinates"][1]}
                                          for f in hs["features"][:20]]}
+            if name == "list_data_layers":
+                from backend import geodata
+                g = arguments.get("group")
+                keep = ("id", "title", "group", "units", "source", "date", "res", "available")
+                return {"success": True, "layers": [{k: l.get(k) for k in keep} for l in geodata.catalog()
+                                                    if not g or g.lower() in l["group"].lower()]}
+            if name == "query_data_layers":
+                from backend import geodata
+                lat, lng = float(arguments["lat"]), float(arguments["lng"])
+                ls = arguments.get("layers") or None
+                if arguments.get("radius_m"):
+                    return {"success": True, **geodata.area(lng, lat, radius_m=float(arguments["radius_m"]), layers=ls)}
+                return {"success": True, **geodata.point(lng, lat, layers=ls)}
+            if name == "get_data_features":
+                from backend import geodata
+                return {"success": True, **geodata.features(arguments["layer"], lon=float(arguments["lng"]),
+                                                             lat=float(arguments["lat"]),
+                                                             radius_m=float(arguments.get("radius_m") or 2000),
+                                                             limit=int(arguments.get("limit") or 50))}
+            if name == "get_fire_weather_history":
+                from backend.geodata.query import fire_weather
+                d = fire_weather(float(arguments["lng"]), float(arguments["lat"]))
+                return {"success": d is not None, **(d or {"error": "no gridMET data at this point"})}
             if name == "get_home_hardening_guidelines":
                 return {"success": True, "regulations": {
                     "cdi_framework": "California Department of Insurance 'Safer from Wildfires' (10 CCR 2644.9): admitted "

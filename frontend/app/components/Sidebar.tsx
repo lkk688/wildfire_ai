@@ -9,6 +9,7 @@ import type { LayerToggles } from './MapView';
 import { bellwetherCategories } from '../lib/legend';
 import { LayerState, REGIONS, getJSON } from '../lib/api';
 import { WX_ORDER, WX_VARS, WxVar } from '../lib/weatherVars';
+import DataLayersPanel from './DataLayersPanel';
 
 interface SidebarProps {
   activeLayer: '1yr' | '5yr' | 'none';
@@ -26,6 +27,11 @@ interface SidebarProps {
   onSwitchToVision?: () => void;
   wxField: WxVar | 'none';
   setWxField: (v: WxVar | 'none') => void;
+  geoLayers: string[];
+  setGeoLayers: (fn: (prev: string[]) => string[]) => void;
+  geoOpacity: number;
+  setGeoOpacity: (v: number) => void;
+  mapZoom: number;
 }
 
 const LAYERS: Array<{ id: keyof LayerToggles; title: string; source: string; icon: React.ReactNode; tone: string }> = [
@@ -130,6 +136,7 @@ function Conditions({ region, layers, setLayers }: { region: string; layers: Lay
 export default function Sidebar({
   activeLayer, setActiveLayer, selectedRegion, setSelectedRegion, layers, setLayers, layerStatus, opacity, setOpacity,
   layerStats, onOpenDataCatalog, onOpenModelEvaluation, onSwitchToVision, wxField, setWxField,
+  geoLayers, setGeoLayers, geoOpacity, setGeoOpacity, mapZoom,
 }: SidebarProps) {
   // Bellwether categories for the model shown on the map (same cut-offs as the overlay)
   const bwWhich: '1yr' | '5yr' = activeLayer === '5yr' ? '5yr' : '1yr';
@@ -280,6 +287,8 @@ export default function Sidebar({
           ))}
           <div className="text-[10px] text-slate-500 px-1">Click anywhere on the map for a point summary from all sources.</div>
         </div>
+
+        <DataLayersPanel geoLayers={geoLayers} setGeoLayers={setGeoLayers} geoOpacity={geoOpacity} setGeoOpacity={setGeoOpacity} mapZoom={mapZoom} />
 
         <div className="space-y-1.5 bg-slate-900/40 p-2.5 rounded-xl border border-slate-800/80">
           <div className="flex items-center justify-between text-xs text-slate-300">

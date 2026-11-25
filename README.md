@@ -205,6 +205,32 @@ The server downloads only the weather fields it needs from each NOAA model file 
 instead of 100–170 MB) and stores them on a 3 km grid over California
 ([`backend/noaa_grid.py`](backend/noaa_grid.py)). It checks for new model runs every 10 minutes.
 
+**California data cache: what shapes fire behaviour everywhere in the state?** A second set of layers is kept on our
+own server for all of California, so the map and the AI copilot can read it in milliseconds. They are listed in the
+*California data (local cache)* panel; clicking the map adds their values at that point to the location summary.
+
+| Group | Layers | Source | Resolution |
+|---|---|---|---|
+| Fuels and terrain | Fire-behaviour fuel model, canopy cover / height / base height / bulk density (the inputs of fire-spread models), slope, aspect, elevation | LANDFIRE 2025, USGS 3DEP | 30 m, 10 m |
+| Modelled hazard | Burn probability, flame length, chance of flames over 4 / 8 ft, exposure of homes, risk to structures | USFS Wildfire Risk to Communities 2024 | 30 m |
+| Fire weather 2000–2025 | On each place's worst 10% of fire-danger days: wind speed and direction, lowest humidity, dead fuel moisture | gridMET daily, computed here | 4 km |
+| Imagery and vegetation | Aerial photo with near-infrared, tree canopy height, dry-season greenness and moisture, land cover | USDA NAIP 2022, Meta / WRI, Sentinel-2, ESA WorldCover | 0.6–10 m |
+| History and treatments | 183,000 wildfire ignition points since 1992 with cause, fire perimeters since 1950, hazard zones, fuel-reduction projects, prescribed burns, CalVTP and federal treatments | NIFC InFORM, CAL FIRE, Board of Forestry | points, polygons |
+| Buildings | About 11.5 million footprints | Microsoft | polygons |
+
+![Fuel models and wildfire ignition points around San Bruno from the California data cache, with the legend](docs/assets/ui_data_cache.jpg)
+
+*LANDFIRE fuel models (grass-shrub in orange, timber litter in green) and wildfire ignition points since 1992
+(orange: human-caused) around San Bruno and San Bruno Mountain.*
+
+| Layer panel | Cache values at a clicked point |
+|---|---|
+| ![California data layer panel](docs/assets/ui_data_cache_panel.jpg) | ![California data at a point: fuels, modelled hazard, fire-weather wind rose, zones and history](docs/assets/ui_data_cache_point.jpg) |
+
+Coarse layers are downloaded for the whole state ahead of time; the fine ones (aerial photos, canopy height,
+Sentinel-2) are fetched the first time a place is viewed and kept. How it works, the full layer list, the HTTP API
+and the build commands: [`docs/DATA_CACHE.md`](docs/DATA_CACHE.md).
+
 ### 4.3 AI evaluation browser
 
 This view (the **VLM Evaluation** tab at the top of the page) shows the evaluation from
@@ -362,7 +388,8 @@ are rounded to about 100 m.
 | Plan | Why | Status |
 |---|---|---|
 | Past weather on the time slider | Replay the weather of a past fire, for example the 2020 CZU Lightning Complex, from the same NOAA archive. | Planned |
-| More regions and the whole state | The map's data sources already cover California; the region list and some layers are limited to three Bay Area communities. | Planned |
+| More regions and the whole state | The California data cache covers the whole state; the region list, the building layer of the live map and the Bellwether layer are still limited to three Bay Area communities. | In progress |
+| Fire-spread scenarios | Run an open fire-spread model (for example ELMFIRE or Pyretechnics) on the cached fuels, terrain and fire-weather winds, to see which vegetation carries fire towards homes. | Planned |
 | A public deployment | Reading weather straight from NOAA removed the last rate-limited source, so the demo can be hosted for outside users. | Planned |
 
 ## 6. Run it yourself
@@ -382,6 +409,9 @@ cd frontend && npm install && npm run build && npm run start   # open http://loc
 ```
 
 - The first start downloads about 1.3 GB of weather data in a few minutes; `WX_INGEST=0` switches this off.
+- The California data cache is built separately (several hours, tens of GB); see [`docs/DATA_CACHE.md`](docs/DATA_CACHE.md).
+  Without it, the raster layers are fetched from their sources as they are viewed; the fire-weather and vector
+  layers need the build step.
 - Build-time options: `NEXT_PUBLIC_API_BASE=http://host:8000` for a backend elsewhere;
   `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY=...` for the in-page Street View panorama.
 - The map needs only internet access (plus the partner files for the Bellwether layer). The evaluation browser needs

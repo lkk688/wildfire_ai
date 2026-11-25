@@ -261,6 +261,85 @@ def get_data_source_status(region: str = Query("san_bruno")):
     return {"success": True, "sources": gis_service.check_sources(region)}
 
 
+# ----------------------------------------------------------------------------- California data cache (backend/geodata)
+_EMPTY_PNG = None
+
+
+def _empty_png():
+    global _EMPTY_PNG
+    if _EMPTY_PNG is None:
+        import io as _io
+        from PIL import Image
+        b = _io.BytesIO()
+        Image.new("RGBA", (256, 256), (0, 0, 0, 0)).save(b, "PNG")
+        _EMPTY_PNG = b.getvalue()
+    return _EMPTY_PNG
+
+
+def _parse_layers(layers: Optional[str]):
+    return [s for s in (layers or "").split(",") if s] or None
+
+
+@app.get("/api/geodata/catalog")
+def geodata_catalog():
+    """Every cached California layer: source, units, dates, licence, style and whether its data is built."""
+    from backend import geodata
+    return {"success": True, "layers": geodata.catalog()}
+
+
+@app.get("/api/geodata/tiles/{layer_id}/{z}/{x}/{y}.png")
+def geodata_tile(layer_id: str, z: int, x: int, y: int):
+    """Web-map tile drawn from the local cache (fetched from the public source on first view)."""
+    from fastapi.responses import Response
+    from backend.geodata import render
+    try:
+        data = render.tile_png(layer_id, z, x, y)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"unknown layer {layer_id}")
+    return Response(content=data or _empty_png(), media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/api/geodata/point")
+def geodata_point(lat: float, lng: float, layers: Optional[str] = Query(None)):
+    """Value of every cached layer at a point, with source and units."""
+    from backend import geodata
+    return {"success": True, **geodata.point(lng, lat, _parse_layers(layers))}
+
+
+@app.get("/api/geodata/area")
+def geodata_area(lat: Optional[float] = None, lng: Optional[float] = None, radius_m: float = 500,
+                 bbox: Optional[str] = Query(None), layers: Optional[str] = Query(None)):
+    """Summaries of the cached layers inside a circle (lat, lng, radius_m) or a bbox (w,s,e,n)."""
+    from backend import geodata
+    b = tuple(float(v) for v in bbox.split(",")) if bbox else None
+    if b is None and (lat is None or lng is None):
+        raise HTTPException(status_code=400, detail="give lat and lng, or bbox")
+    return {"success": True, **geodata.area(lng, lat, radius_m=radius_m, bbox=b, layers=_parse_layers(layers))}
+
+
+@app.get("/api/geodata/features/{layer_id}")
+def geodata_features(layer_id: str, lat: Optional[float] = None, lng: Optional[float] = None, radius_m: float = 1000,
+                     bbox: Optional[str] = Query(None), limit: int = Query(200, le=5000), geometry: bool = False):
+    """Vector features (ignitions, treatments, perimeters, FHSZ, buildings) near a point or in a bbox."""
+    from backend import geodata
+    b = tuple(float(v) for v in bbox.split(",")) if bbox else None
+    if b is None and (lat is None or lng is None):
+        raise HTTPException(status_code=400, detail="give lat and lng, or bbox")
+    return {"success": True, **geodata.features(layer_id, bbox=b, lon=lng, lat=lat, radius_m=radius_m, limit=limit,
+                                                 geometry=geometry)}
+
+
+@app.get("/api/geodata/fire-weather")
+def geodata_fire_weather(lat: float, lng: float):
+    """Fire-weather history 2000-2025 (gridMET) of the 4 km cell at a point."""
+    from backend.geodata.query import fire_weather
+    d = fire_weather(lng, lat)
+    if d is None:
+        raise HTTPException(status_code=404, detail="no gridMET data here (or not built yet)")
+    return {"success": True, **d}
+
+
 @app.get("/api/risk-factors")
 def get_risk_factors(region: Optional[str] = Query(None), is_5_year: bool = Query(False)):
     """Bellwether risk factors aggregated over a region: contributing and mitigating features (partner data)."""
