@@ -389,7 +389,7 @@ are rounded to about 100 m.
 |---|---|---|
 | Past weather on the time slider | Replay the weather of a past fire, for example the 2020 CZU Lightning Complex, from the same NOAA archive. | Planned |
 | More regions and the whole state | The California data cache covers the whole state; the region list, the building layer of the live map and the Bellwether layer are still limited to three Bay Area communities. | In progress |
-| Fire-spread scenarios | Run an open fire-spread model (for example ELMFIRE or Pyretechnics) on the cached fuels, terrain and fire-weather winds, to see which vegetation carries fire towards homes. | Planned |
+| Fire-spread scenarios | A Rothermel / minimum-travel-time spread model runs on the cached fuels, terrain and fire-weather winds ([docs/FIRE_SPREAD.md](docs/FIRE_SPREAD.md)); the API and the copilot can simulate a fire from any point, and a batch tool ranks vegetation-treatment units by the building exposure they would remove. Map display and comparison with other spread models are next. | In progress |
 | A public deployment | Reading weather straight from NOAA removed the last rate-limited source, so the demo can be hosted for outside users. | Planned |
 
 ## 6. Run it yourself

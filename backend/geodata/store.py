@@ -11,13 +11,13 @@ import logging
 import math
 import os
 import threading
+from functools import lru_cache
 import time
 
 import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.transform import from_origin
-from rasterio.warp import reproject
 from shapely.geometry import box
 
 from backend.geodata.catalog import layer
@@ -39,9 +39,18 @@ def tile_path(layer_id, level, i, j):
     return TILES / layer_id / f"L{level}" / f"{i}_{j}"
 
 
-def in_california(spec, level, i, j):
+_geos_lock = threading.Lock()
+
+
+@lru_cache(maxsize=None)
+def _tile_in_ca(res, level, i, j):
     _, prep = ca_shape()
-    return prep.intersects(box(*tile_bounds(spec["res"], level, i, j)))
+    with _geos_lock:  # a prepared GEOS geometry must not be used from several threads at once (segfaults)
+        return bool(prep.intersects(box(*tile_bounds(res, level, i, j))))
+
+
+def in_california(spec, level, i, j):
+    return _tile_in_ca(spec["res"], level, i, j)
 
 
 def cached(layer_id, level, i, j):
@@ -83,12 +92,21 @@ def _from_children(spec, level, i, j):
                 big[:, dj * TILE:(dj + 1) * TILE, di * TILE:(di + 1) * TILE] = _load(c.with_suffix(".tif"))
     if not (big != spec["nodata"]).any():
         return None
-    l, b, r, t = tile_bounds(spec["res"], level, i, j)
-    res = spec["res"] * 2 ** level
-    out = np.full((nb, TILE, TILE), spec["nodata"], dtype=spec["dtype"])
-    rs = Resampling.mode if spec["kind"] == "categorical" or spec.get("resampling") == "nearest" else Resampling.average
-    reproject(big, out, src_transform=from_origin(l, t, res / 2, res / 2), src_crs=CRS, src_nodata=spec["nodata"],
-              dst_transform=from_origin(l, t, res, res), dst_crs=CRS, dst_nodata=spec["nodata"], resampling=rs)
+    # Children sit on an exactly aligned grid at half the pixel size, so a 2x2 block reduction is exact. Pure numpy:
+    # GDAL reproject on in-memory arrays from many threads crashed the statewide pyramid build.
+    nd = spec["nodata"]
+    blk = big.reshape(nb, TILE, 2, TILE, 2).transpose(0, 1, 3, 2, 4).reshape(nb, TILE, TILE, 4)
+    valid = blk != nd
+    if spec["kind"] == "categorical" or spec.get("resampling") == "nearest":
+        counts = np.stack([((blk == blk[..., k:k + 1]) & valid).sum(-1) * valid[..., k] for k in range(4)], -1)
+        out = np.take_along_axis(blk, counts.argmax(-1)[..., None], -1)[..., 0]
+    else:
+        n = valid.sum(-1)
+        mean = np.where(valid, blk.astype("float64"), 0).sum(-1) / np.maximum(n, 1)
+        if np.issubdtype(np.dtype(spec["dtype"]), np.integer):
+            mean = np.rint(mean)
+        out = np.where(n > 0, mean, nd)
+    out = np.where(valid.any(-1), out, nd).astype(spec["dtype"])
     return out
 
 

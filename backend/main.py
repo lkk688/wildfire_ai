@@ -340,6 +340,16 @@ def geodata_fire_weather(lat: float, lng: float):
     return {"success": True, **d}
 
 
+@app.get("/api/firesim/spread")
+def firesim_spread(lat: float, lng: float, hours: float = Query(6.0, ge=0.5, le=24),
+                   wind_ms: Optional[float] = None, wind_from_deg: Optional[float] = None,
+                   rh_min: Optional[float] = None, fm100: Optional[float] = None):
+    """One simulated fire from an ignition point (30 m LANDFIRE fuels, Rothermel spread). Weather not given defaults
+    to this cell's fire-weather-day conditions from gridMET 2000-2025."""
+    from backend.firesim.api import simulate
+    return simulate(lat, lng, hours=hours, wind_ms=wind_ms, wind_from_deg=wind_from_deg, rh_min=rh_min, fm100=fm100)
+
+
 @app.get("/api/risk-factors")
 def get_risk_factors(region: Optional[str] = Query(None), is_5_year: bool = Query(False)):
     """Bellwether risk factors aggregated over a region: contributing and mitigating features (partner data)."""

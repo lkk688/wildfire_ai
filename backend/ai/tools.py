@@ -59,6 +59,15 @@ class WildfireToolRegistry:
                 "fire-weather days per month, wind direction on those days, and the 10 worst days with wind and "
                 "humidity. Use it to pick wind scenarios for spread or to explain seasonal danger.", LATLON,
                 ["lat", "lng"]),
+            _fn("simulate_fire_spread", "Simulate one fire from an ignition point for a few hours on 30 m LANDFIRE fuels "
+                "(Rothermel spread, crown fire, terrain, uniform wind; no spotting or suppression). Returns burned area, "
+                "hourly perimeters, flame length, crown-fire share and buildings exposed. Weather not given defaults to "
+                "the cell's fire-weather-day conditions (gridMET 2000-2025). A planning scenario, not a forecast.",
+                {**LATLON, "hours": {"type": "number", "description": "Burning time, default 6"},
+                 "wind_ms": {"type": "number", "description": "10-m wind speed in m/s"},
+                 "wind_from_deg": {"type": "number", "description": "Direction the wind blows from, degrees"},
+                 "rh_min": {"type": "number", "description": "Minimum relative humidity, %"},
+                 "fm100": {"type": "number", "description": "100-h dead fuel moisture, %"}}, ["lat", "lng"]),
             _fn("get_home_hardening_guidelines", "Reference list of California home-hardening and defensible-space measures "
                 "(CDI 'Safer from Wildfires', CAL FIRE Zones 0-2).", {}),
         ]
@@ -115,6 +124,14 @@ class WildfireToolRegistry:
                 from backend.geodata.query import fire_weather
                 d = fire_weather(float(arguments["lng"]), float(arguments["lat"]))
                 return {"success": d is not None, **(d or {"error": "no gridMET data at this point"})}
+            if name == "simulate_fire_spread":
+                from backend.firesim.api import simulate
+                kw = {k: float(arguments[k]) for k in ("hours", "wind_ms", "wind_from_deg", "rh_min", "fm100")
+                      if arguments.get(k) is not None}
+                r = simulate(float(arguments["lat"]), float(arguments["lng"]), **kw)
+                if r.get("success"):  # perimeters are for the map; the model gets their areas
+                    r["isochrones"] = [f["properties"] for f in r["isochrones"]["features"]]
+                return r
             if name == "get_home_hardening_guidelines":
                 return {"success": True, "regulations": {
                     "cdi_framework": "California Department of Insurance 'Safer from Wildfires' (10 CCR 2644.9): admitted "

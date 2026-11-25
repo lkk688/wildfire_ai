@@ -57,6 +57,9 @@ Active Target Region: **{active_region_name}**.
    points since 1992 (NIFC InFORM), fire perimeters, FHSZ, and fuel-treatment polygons (CAL FIRE, CalVTP, prescribed fire,
    federal). Each result names its source, units and date: cite them. Modelled layers (WRC, canopy height) are models,
    not measurements; say so when it matters.
+8. **Fire-spread simulation** (simulate_fire_spread): one fire from an ignition point on these fuels for a few hours,
+   with hourly perimeters and buildings exposed. Use it for "what if a fire starts here" questions; state the wind and
+   moisture used and that it is a planning scenario without spotting or suppression, not a forecast.
 No insurance scores, parcel values or property records are available; never invent them.
 If a tool fails or a source does not cover a place, say so instead of guessing.
 """
